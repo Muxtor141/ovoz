@@ -7,6 +7,11 @@ import Foundation
 /// tested on its own (P-06). Every callback runs on the queue passed to the
 /// source's initializer: the resource loader's serial queue.
 protocol ByteSource: AnyObject {
+  /// Whether any byte range can be read at once, as from a local file. The
+  /// player then reads only what it is about to play instead of buffering
+  /// ahead in memory.
+  var readsOnDemand: Bool { get }
+
   /// Learns the resource's total length and reads its first [headerLength]
   /// bytes (fewer if the resource is shorter). Called once, before any read.
   func prepare(headerLength: Int, completion: @escaping (Result<(length: Int64, header: Data), OvozError>) -> Void)
@@ -40,6 +45,8 @@ final class FileByteSource: ByteSource {
     self.path = path
     self.queue = queue
   }
+
+  var readsOnDemand: Bool { true }
 
   func prepare(headerLength: Int, completion: @escaping (Result<(length: Int64, header: Data), OvozError>) -> Void) {
     queue.async { [self] in
@@ -141,6 +148,10 @@ final class HttpByteSource: NSObject, ByteSource, URLSessionDataDelegate {
     self.headers = headers
     self.queue = queue
   }
+
+  /// Every read costs a round trip: let the player buffer ahead, as it does for
+  /// any progressive download.
+  var readsOnDemand: Bool { false }
 
   func prepare(headerLength: Int, completion: @escaping (Result<(length: Int64, header: Data), OvozError>) -> Void) {
     var header = Data()

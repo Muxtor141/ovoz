@@ -254,6 +254,41 @@ final class DecryptingResourceLoaderTests: XCTestCase {
     XCTAssertEqual(duration, expected, accuracy: 0.05)
   }
 
+  /// A big local file is read as it plays, not prefetched into memory: before
+  /// on-demand loading, AVFoundation pulled 30–50 MB of every encrypted item.
+  @MainActor
+  func testReadsALocalFileOnDemand() async throws {
+    let url = try makeLongEncryptedMP3(megabytes: 16)
+    let format = AudioFormatInfo.named("mp3")!
+    let queue = DispatchQueue(label: "test.on-demand")
+    let counting = CountingByteSource(FileByteSource(path: url.path, queue: queue))
+    let loader = DecryptingResourceLoader(source: counting,
+                                          layout: EncryptionLayout(key: SecureBytes(demoKey), iv: demoIV, dataOffset: 0),
+                                          format: format, queue: queue, onFailure: { _ in })
+    loaders.append(loader)
+    let asset = AVURLAsset(url: DecryptingResourceLoader.url(itemId: 7, format: format))
+    asset.resourceLoader.setDelegate(loader, queue: queue)
+    let item = AVPlayerItem(asset: asset)
+    let player = AVPlayer(playerItem: item)
+    player.volume = 0
+
+    let ready = expectation(description: "ready")
+    let observation = item.observe(\.status, options: [.initial, .new]) { item, _ in
+      if item.status == .readyToPlay { ready.fulfill() }
+    }
+    await fulfillment(of: [ready], timeout: 5)
+    observation.invalidate()
+    player.play()
+    try await Task.sleep(nanoseconds: 1_500_000_000)
+
+    XCTAssertGreaterThan(player.currentTime().seconds, 0.5, "playback did not advance")
+    let served = queue.sync { counting.served }
+    print("on-demand: read \(served / 1024) KB for \(String(format: "%.1f", player.currentTime().seconds)) s of audio")
+    // About 30 KB per second of this audio. Prefetching reads megabytes.
+    XCTAssertLessThan(served, 1_048_576, "read \(served / 1024) KB for a second of audio")
+    player.pause()
+  }
+
   @MainActor
   func testPlaysToTheEndAfterASeek() async throws {
     let asset = asset(localSource("sample_separate_iv.mp3.enc"),
@@ -281,4 +316,52 @@ final class DecryptingResourceLoaderTests: XCTestCase {
     XCTAssertEqual(player.currentTime().seconds, 10, accuracy: 0.1)
     await fulfillment(of: [ended], timeout: 5)
   }
+}
+
+/// Counts the bytes a source hands out. Callbacks run on the loader's queue.
+private final class CountingByteSource: ByteSource {
+  init(_ inner: ByteSource) { self.inner = inner }
+
+  private let inner: ByteSource
+  private(set) var served: Int64 = 0
+
+  var readsOnDemand: Bool { inner.readsOnDemand }
+
+  func prepare(headerLength: Int, completion: @escaping (Result<(length: Int64, header: Data), OvozError>) -> Void) {
+    inner.prepare(headerLength: headerLength, completion: completion)
+  }
+
+  func read(offset: Int64, count: Int64, onData: @escaping (Data) -> Bool,
+            onEnd: @escaping (OvozError?) -> Void) -> ByteRead {
+    inner.read(offset: offset, count: count, onData: { [weak self] data in
+      self?.served += Int64(data.count)
+      return onData(data)
+    }, onEnd: onEnd)
+  }
+
+  func close() { inner.close() }
+}
+
+/// A long MP3 (the fixture's frames, repeated, without its Xing header, whose
+/// duration would be wrong), encrypted with the demo key into a temporary file.
+private func makeLongEncryptedMP3(megabytes: Int) throws -> URL {
+  let sample = fixtureData("sample.mp3")
+  // MPEG-1 Layer III frame length: 144 * bitrate / sample rate + padding.
+  let bitrates = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320]
+  let rates = [44100, 48000, 32000]
+  var offset = 0
+  var frames: [Data] = []
+  while offset + 4 <= sample.count, sample[offset] == 0xFF, sample[offset + 1] & 0xE0 == 0xE0 {
+    let header = sample[offset + 2]
+    let length = 144 * bitrates[Int(header >> 4)] * 1000 / rates[Int((header >> 2) & 3)] + Int((header >> 1) & 1)
+    frames.append(sample.subdata(in: offset..<min(sample.count, offset + length)))
+    offset += length
+  }
+  let audio = frames.dropFirst().reduce(into: Data()) { $0.append($1) }
+  var file = Data(capacity: megabytes * 1_048_576 + audio.count)
+  while file.count < megabytes * 1_048_576 { file.append(audio) }
+  try AesCtrCipher(key: SecureBytes(demoKey), iv: demoIV).apply(&file, at: 0)
+  let url = FileManager.default.temporaryDirectory.appendingPathComponent("ovoz_long_\(megabytes)mb.mp3.enc")
+  try file.write(to: url)
+  return url
 }

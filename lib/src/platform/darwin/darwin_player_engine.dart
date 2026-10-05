@@ -15,19 +15,13 @@ import 'package:ovoz/src/player_state.dart';
 /// thread, events come back through a listener the Swift side calls.
 final class DarwinPlayerEngine implements PlayerEngine {
   DarwinPlayerEngine() {
-    // The listener's closures hold this engine weakly: the native player
-    // holds the listener, and a strong reference back would form a cycle
-    // across Dart and Objective-C that neither garbage collector can see.
-    final self = WeakReference(this);
-    void emit(EngineEvent event) => self.target?._emit(event);
-
     final listener = OvozPlayerListener$Builder.implementAsListener(
       onStateChanged_playing_: (state, playing) =>
-          emit(EngineStateChanged(ProcessingState.values[state], playing)),
-      onItemStarted_: (id) => emit(EngineItemStarted(id)),
-      onItemEnded_: (id) => emit(EngineItemEnded(id)),
-      onDurationChanged_durationMs_: (id, ms) => emit(EngineDurationChanged(id, Duration(milliseconds: ms))),
-      onError_code_message_: (id, code, message) => emit(
+          _emit(EngineStateChanged(ProcessingState.values[state], playing)),
+      onItemStarted_: (id) => _emit(EngineItemStarted(id)),
+      onItemEnded_: (id) => _emit(EngineItemEnded(id)),
+      onDurationChanged_durationMs_: (id, ms) => _emit(EngineDurationChanged(id, Duration(milliseconds: ms))),
+      onError_code_message_: (id, code, message) => _emit(
         EngineItemFailed(
           id,
           AudioError(
@@ -38,16 +32,22 @@ final class DarwinPlayerEngine implements PlayerEngine {
           ),
         ),
       ),
-      onRemoteCommand_value_: (command, value) => emit(EngineMediaCommand(_commandEvent(command, value))),
-      // The isolate need not outlive the app's own references to the player.
+      onRemoteCommand_value_: (command, value) => _emit(EngineMediaCommand(_commandEvent(command, value))),
       $keepIsolateAlive: false,
     );
     _player = OvozPlayer.alloc().initWithListener(listener);
-    _finalizer.attach(this, _player, detach: this);
+    _live.add(this);
   }
 
-  /// Safety net (IO-03): a player dropped without [dispose] still stops.
-  static final _finalizer = Finalizer<OvozPlayer>((player) => player.dispose());
+  /// Every engine not yet disposed (IO-03).
+  ///
+  /// A player must keep loading and playing even when the app holds no
+  /// reference to it — a player created inside an async function, say, whose
+  /// only reference is the frame waiting on the player's own load. The
+  /// native player's callbacks cannot keep it alive (that reference runs
+  /// through Objective-C, which Dart's garbage collector does not see), so
+  /// engines are held here until [dispose], as other audio plugins do.
+  static final _live = <DarwinPlayerEngine>{};
 
   late final OvozPlayer _player;
   final _events = StreamController<EngineEvent>.broadcast();
@@ -134,8 +134,9 @@ final class DarwinPlayerEngine implements PlayerEngine {
 
   @override
   void dispose() {
-    _finalizer.detach(this);
+    // Native dispose drops the listener, which releases its closures.
     _player.dispose();
+    _live.remove(this);
     unawaited(_events.close());
   }
 

@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'ovoz'
-  s.version          = '0.0.1'
+  s.version          = '0.1.0'
   s.summary          = 'Native audio engine for Flutter: players, playlists, encrypted sources, audio session and lock-screen controls.'
   s.homepage         = 'https://github.com/Muxtor141/ovoz'
   s.license          = { :file => '../LICENSE' }

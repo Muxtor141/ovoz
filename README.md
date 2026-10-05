@@ -17,6 +17,10 @@ working name.
   request, clips (start/end).
 - Encryption: AES-CTR (128/192/256), IV given or read from the file's header,
   local or streamed by byte range; a wrong key is reported as such.
+- Long files cost little memory: nothing is loaded whole, finished items are
+  released, and local files, encrypted or not, are read as they play: a
+  300 MB encrypted chapter costs about as much memory as a plain file
+  (iOS 16+).
 - Events you can act on: an item completed (once, never for skips), an item
   failed (with a kind: not found, network, decryption, …).
 - Position, buffered position and duration as synchronous reads, and as
@@ -81,6 +85,10 @@ player.events.listen((event) {
   if (event is ItemFailed) showError(event.error.kind);
 });
 ```
+
+A player lives until you call `dispose()`, even if you drop every reference
+to it, so a sound started from a short-lived function plays to its end.
+Dispose the players you create.
 
 Streams give each new listener the current value first, so a `StreamBuilder`
 needs no special setup. `play()`, `pause()`, `seek()` and the skips never

@@ -1,3 +1,13 @@
+## 0.1.0-dev.2
+
+- Fixed: local encrypted files are read as they play instead of 30–50 MB
+  being prefetched into memory per item (iOS 16+). Measured with 300 MB,
+  6-hour chapters: no growth over an idle app, across chapter changes and
+  seeks.
+- Fixed: a player referenced only by its own pending load (for example one
+  created and awaited inside an async function) could be garbage-collected,
+  and the load never completed. A player now lives until `dispose()`.
+
 ## 0.1.0-dev.1
 
 First working version, iOS only.

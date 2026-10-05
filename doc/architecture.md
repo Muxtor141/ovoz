@@ -80,6 +80,8 @@ Confirmed (✓) or changed (Δ) against the plan.
 | — | The keystream is built from AES-ECB of counters we compute, not CommonCrypto's CTR mode, so the counter arithmetic cannot differ from the encryptor's. | new |
 | ENC-07 | Wrong key → `decryption` error, from the format signature of the first decrypted bytes, within milliseconds. | ✓ |
 | ENC-06 | Keys are copied once into an engine-owned buffer, zeroed on release (`SecureBytes`), never logged. | ✓ |
+| — | Local encrypted files are read on demand (`isEntireLengthAvailableOnDemand`): a 300 MB chapter costs no more memory than a plain file. See §5. | new |
+| IO-03 | A player lives until `dispose()`, referenced or not; dropped players are not finalized (that let a player be collected mid-load). See §4. | Δ |
 | D-07 / EVT-03 | Position, buffered position and duration are synchronous reads; Dart polls them only while a stream is listened to. | ✓ |
 | D-08 | CocoaPods **and** Swift Package Manager, both run against the integration tests. The ffigen trampolines are their own SwiftPM target (a target cannot mix Swift and Objective-C). | ✓ |
 | D-09 | iOS 15: Mutolaa's target, and Xcode 27's minimum. | ✓ |
@@ -118,6 +120,9 @@ AVFoundation request by reading the matching ciphertext from its
 `ByteSource` in 256 KB chunks and decrypting it on the way through, yielding
 the queue between chunks so cancellations (seeks) take effect at once. It
 owns the requests it accepted: AVFoundation does not keep them alive.
+For local files it declares the content available on demand
+(`isEntireLengthAvailableOnDemand`, iOS 16+), so AVFoundation reads 64 KB
+just before playing it, as from a plain file, instead of prefetching; see §5.
 
 **`HttpByteSource`** probes with a ranged GET, requires `206` and an
 uncompressed body (anything else is `rangeNotSupported`), sends the app's
@@ -143,14 +148,48 @@ artwork (`https:`, `file:`, `asset:`), and forwards commands to the owner.
   included, so the loader needs no locks.
 - Native → Dart events are posted to the isolate (asynchronous). The Dart
   adapter ignores events that arrive after `dispose`.
-- The native player holds its listener; the listener's closures hold the Dart
-  adapter only weakly, so no reference cycle spans the two garbage
-  collectors. A `Finalizer` disposes a native player whose `AudioPlayer` was
-  dropped without `dispose` (IO-03).
+- **A player lives until `dispose()`** (IO-03), whether or not the app still
+  references it, as in other audio plugins: the Dart adapters are held in a
+  registry from creation to `dispose`. An earlier version held them only
+  weakly and finalized dropped players, and a player whose only reference was
+  an async function awaiting its own load could be garbage-collected
+  mid-load: the load never completed. An integration test pins this down.
+  The flip side: a player that is never disposed is never freed.
 
 ---
 
-## 5. Building the bindings
+## 5. Memory
+
+Nothing is loaded whole. The Dart queue holds descriptors (a few hundred
+bytes each); natively only the current item and the one cued after it are
+open, and a finished item is released as the player moves on.
+
+Within an item, AVFoundation decides how much to read ahead. Measured with a
+300 MB, 6-hour encrypted MP3 (2026-10-05):
+
+| | macOS process footprint | iOS app footprint (idle app: ~126 MB) |
+|---|---|---|
+| Plain local file (AVFoundation reads it itself) | 10 MB | — |
+| Encrypted, before on-demand loading | 43 MB, 74 MB peaks | 163 MB, 175 MB peak on a seek |
+| Encrypted, on demand (current) | 11 MB | 126–131 MB with three such chapters queued, through two chapter changes and a seek to 2 h 30 m |
+
+Without on-demand loading, AVFoundation treats the loader's custom scheme
+like a network stream: it asks for everything to the end of the file and
+keeps 30–50 MB of what it receives, whatever the file's size; seeks repeat
+that. `preferredForwardBufferDuration` did not change it, and answering in
+smaller pieces did not either (AVFoundation simply asks again). Declaring
+the content available on demand did: AVFoundation then reads what it is about
+to play, 64 KB at a time, about 128 KB for 1.5 s of audio
+(`testReadsALocalFileOnDemand`).
+
+Encrypted HTTP sources keep the prefetch, because on demand every 64 KB would
+cost a round trip; their memory is that of any progressive download. On
+iOS 15, local files prefetch too (the API is iOS 16+): bounded, not
+growing.
+
+---
+
+## 6. Building the bindings
 
 `tool/generate_bindings.sh`:
 
@@ -168,14 +207,14 @@ checked: the stripped framework still exports the trampolines and classes.
 
 ---
 
-## 6. Tests
+## 7. Tests
 
 | Level | What | Run | Count |
 |---|---|---|---|
 | Cross-implementation | OpenSSL test vectors decrypt with Mutolaa's own PointyCastle code, whole and at 200 random offsets; counter carry; AES-256 + IV in header | `flutter test test/cross_implementation_test.dart` | 5 |
-| Native, macOS | cipher (500 random ranges), file and HTTP byte sources (ranges, auth, 200-instead-of-206, compression, dropped connections), resource loader with AVFoundation (load, wrong key, HTTP), AVPlayer playback + exact seek to the end | `cd ios/native_tests && swift test` | 19 |
+| Native, macOS | cipher (500 random ranges), file and HTTP byte sources (ranges, auth, 200-instead-of-206, compression, dropped connections), resource loader with AVFoundation (load, wrong key, HTTP, on-demand reading of a 16 MB file), AVPlayer playback + exact seek to the end | `cd ios/native_tests && swift test` | 20 |
 | Dart unit | queue order/shuffle/loop; player against `FakePlayerEngine`: loading, interruption of loads, failures and retry, advancing, loop one/all, pause at item end, navigation, stop/resume, queue edits, skip on error, media commands, streams | `flutter test` | 35 |
-| On device (simulator) | the real engine through the public API: encrypted MP3/AAC, exact seeks, initial positions, gapless advance with exactly-once completion, pause at item end, clip loop, next/previous/jump, stop/resume, wrong key, missing file, simultaneous players, encrypted HTTP streaming with a bearer token, header-only streaming, refused requests | `cd example && flutter test integration_test -d <id>` | 15 |
+| On device (simulator) | the real engine through the public API: encrypted MP3/AAC, exact seeks, initial positions, gapless advance with exactly-once completion, pause at item end, clip loop, next/previous/jump, stop/resume, wrong key, missing file, simultaneous players, encrypted HTTP streaming with a bearer token, header-only streaming, refused requests, a player kept alive only by its own pending load | `cd example && flutter test integration_test -d <id>` | 16 |
 
 Checked by hand on the simulator: the demo screens; the lock screen and
 Dynamic Island show title, artist and artwork; MediaRemote receives all
@@ -189,7 +228,7 @@ changes, 60+ minutes with the screen off, memory over long sessions
 
 ---
 
-## 7. Next
+## 8. Next
 
 1. **Device checklist** above, then adopt in Mutolaa behind `PlayerBackend`
    on iOS (`mutolaa-requirements.md` §4).

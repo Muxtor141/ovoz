@@ -1,6 +1,6 @@
 name: ovoz
 description: "Audio playback with native-owned players: queues, gapless transitions, encrypted sources decrypted in memory, an app-wide audio session and lock-screen controls."
-version: 0.1.0-dev.1
+version: 0.1.0-dev.2
 # A private package for now; it is consumed as a git dependency.
 publish_to: none
 

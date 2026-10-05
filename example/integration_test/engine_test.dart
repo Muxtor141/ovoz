@@ -178,6 +178,27 @@ void main() {
     );
   });
 
+  testWidgets('a player referenced only by its own pending load still loads', (_) async {
+    // The app keeps no reference: the player lives in this function's frame,
+    // and the frame waits on the player. Only the engine can keep it alive.
+    Future<Duration?> loadUnreferenced() async {
+      final unreferenced = AudioPlayer();
+      final duration = await unreferenced.setSource(AudioSource.asset('assets/audio/song_a.m4a'));
+      await unreferenced.dispose();
+      return duration;
+    }
+
+    final pending = loadUnreferenced();
+    // Churn the heap so the garbage collector runs while the load is pending.
+    var sink = 0;
+    for (var i = 0; i < 40; i++) {
+      sink += List<int>.filled(1 << 20, i).length;
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(sink, greaterThan(0));
+    expect(await pending.timeout(const Duration(seconds: 10)), isNotNull);
+  });
+
   testWidgets('players play at the same time', (_) async {
     final bed = AudioPlayer();
     addTearDown(bed.dispose);

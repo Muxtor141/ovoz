@@ -146,6 +146,14 @@ final class DecryptingResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
       info.contentType = format.uti
       info.contentLength = plaintextLength
       info.isByteRangeAccessSupported = true
+      // Without this, AVFoundation treats the custom scheme like a network
+      // stream: it asks for everything to the end and keeps 30–50 MB of
+      // decrypted audio in memory per item, whatever the file's size. On
+      // demand, it reads 64 KB at a time, just before playing it, as it does
+      // for a plain local file. (iOS 15 keeps the bounded prefetch.)
+      if source.readsOnDemand, #available(iOS 16.0, macOS 13.0, *) {
+        info.isEntireLengthAvailableOnDemand = true
+      }
     }
     guard let dataRequest = request.dataRequest else {
       request.finishLoading()
