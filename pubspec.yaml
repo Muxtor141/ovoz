@@ -1,0 +1,36 @@
+name: ovoz
+description: "Audio playback with native-owned players: queues, gapless transitions, encrypted sources decrypted in memory, an app-wide audio session and lock-screen controls."
+version: 0.1.0-dev.1
+# A private package for now; it is consumed as a git dependency.
+publish_to: none
+
+environment:
+  # objective_c 9.5 needs Dart 3.10. Flutter 3.29 made merged UI/platform
+  # threads the default on iOS, which synchronous FFI calls rely on (D-10).
+  sdk: '>=3.10.0 <4.0.0'
+  flutter: '>=3.38.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  objective_c: ^9.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # tool/ffigen.dart: generates the Dart <-> Swift bindings.
+  ffigen: ^21.0.0
+  logging: ^1.3.0
+  # test/cross_implementation_test.dart: Mutolaa's own decryption, to prove
+  # the test vectors match it.
+  encrypt: ^5.0.3
+  crypto: ^3.0.7
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        # Registers no method channel (Dart uses FFI); it keeps the engine's
+        # classes linked and tells the engine where Flutter's assets are.
+        pluginClass: OvozPlugin

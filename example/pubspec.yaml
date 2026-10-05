@@ -1,0 +1,30 @@
+name: ovoz_example
+description: "Demo app for the ovoz audio engine: one screen per use case."
+publish_to: 'none'
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ovoz:
+    path: ../
+
+dev_dependencies:
+  integration_test:
+    sdk: flutter
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  # Like the Mutolaa app: CocoaPods, not Swift Package Manager.
+  config:
+    enable-swift-package-manager: false
+
+  uses-material-design: true
+
+  assets:
+    - assets/audio/
+    - assets/images/
