@@ -281,6 +281,77 @@ void main() {
     });
   });
 
+  group('stalls', () {
+    // The policy's limits are the player's only clock, so these tests run on
+    // real time, with short limits and wide margins.
+    const policy = StallPolicy(
+      reconnectAfter: Duration(milliseconds: 100),
+      giveUpAfter: Duration(milliseconds: 500),
+    );
+    Future<void> wait(int milliseconds) => Future<void>.delayed(Duration(milliseconds: milliseconds));
+
+    test('a wait reconnects once where it was, then fails the item as a network failure', () async {
+      build(options: const PlayerOptions(stallPolicy: policy), autoLoad: false);
+      final load = player.setSource(chapters(1).single);
+      engine.completeLoad();
+      await load;
+      await player.play();
+      engine.position = const Duration(seconds: 7);
+      await pumpEventQueue();
+      engine.log.clear();
+
+      engine.startBuffering();
+      await wait(300);
+      expect(engine.log, ['setItem(2, 7000)'], reason: 'the same item again, in a new instance');
+      expect(engine.playing, isTrue);
+      expect(events, isEmpty);
+
+      await wait(500);
+      expect(events.single, isA<ItemFailed>().having((e) => e.error.kind, 'kind', AudioErrorKind.network));
+      expect(engine.log.last, 'stop');
+      expect(player.playing, isFalse);
+      expect(player.processingState, ProcessingState.idle);
+      expect(player.position, const Duration(seconds: 7));
+
+      engine.log.clear();
+      await player.play();
+      expect(engine.log, ['setItem(3, 7000)', 'play']);
+    });
+
+    test('a load that never finishes is retried, and setSource completes with the retry', () async {
+      build(options: const PlayerOptions(stallPolicy: policy), autoLoad: false);
+      await player.play();
+      final load = player.setSource(chapters(1).single, initialPosition: const Duration(seconds: 3));
+      await wait(300);
+      expect(engine.log, containsAllInOrder(['setItem(1, 3000)', 'setItem(2, 3000)']));
+
+      engine.completeLoad(const Duration(seconds: 30));
+      expect(await load, const Duration(seconds: 30));
+      await wait(500);
+      expect(events, isEmpty);
+    });
+
+    test('audio arriving in time, or a pause, ends the wait', () async {
+      build(options: const PlayerOptions(stallPolicy: policy));
+      await player.setSource(chapters(1).single);
+      await player.play();
+      await pumpEventQueue();
+      engine.log.clear();
+
+      engine.startBuffering();
+      await wait(30);
+      engine.finishBuffering();
+      await wait(200);
+      engine.startBuffering();
+      await wait(30);
+      await player.pause();
+      await wait(700);
+
+      expect(engine.log, ['pause']);
+      expect(events, isEmpty);
+    });
+  });
+
   group('media controls', () {
     test('commands drive the player unless the app handles them', () async {
       await player.setQueue(chapters(3));

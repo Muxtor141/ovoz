@@ -10,6 +10,7 @@ final class PlayerOptions {
     this.previousRestartThreshold = const Duration(seconds: 3),
     this.maxSkipsOnError = 0,
     this.pitchCorrection = PitchCorrection.speech,
+    this.stallPolicy,
   });
 
   /// How often [AudioPlayer.positionStream] and
@@ -28,4 +29,37 @@ final class PlayerOptions {
 
   /// The initial pitch correction for speed changes.
   final PitchCorrection pitchCorrection;
+
+  /// The initial [AudioPlayer.stallPolicy]. None by default: the player waits
+  /// for audio as long as the platform does.
+  final StallPolicy? stallPolicy;
+}
+
+/// What a player does when it waits for audio it should be playing: a
+/// connection that went quiet, or a load that never finishes.
+///
+/// A wait is time without audio, [ProcessingState.loading] or
+/// [ProcessingState.buffering], while the player is playing or a
+/// [AudioPlayer.setSource] waits for the item. It ends when audio plays or
+/// nobody waits any more (a pause, say); moving to another item starts a new
+/// one.
+@immutable
+final class StallPolicy {
+  const StallPolicy({this.reconnectAfter, required this.giveUpAfter});
+
+  /// After waiting this long, the player loads the item again where it is, so
+  /// that it reads over new connections. Once per wait; null never does.
+  final Duration? reconnectAfter;
+
+  /// After waiting this long in all, the player gives up: the item fails with
+  /// [AudioErrorKind.network] ([ItemFailed]) and the player is idle at its
+  /// position, as after any failure, so [AudioPlayer.play] tries again.
+  final Duration giveUpAfter;
+
+  @override
+  bool operator ==(Object other) =>
+      other is StallPolicy && other.reconnectAfter == reconnectAfter && other.giveUpAfter == giveUpAfter;
+
+  @override
+  int get hashCode => Object.hash(reconnectAfter, giveUpAfter);
 }

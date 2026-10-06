@@ -33,7 +33,8 @@ class AudioPlayer {
   @visibleForTesting
   AudioPlayer.withEngine(PlayerEngine engine, {this.options = const PlayerOptions()})
     : _engine = engine,
-      _pitchCorrection = options.pitchCorrection {
+      _pitchCorrection = options.pitchCorrection,
+      _stallPolicy = options.stallPolicy {
     _subscription = _engine.events.listen(_onEngineEvent);
     _engine.setPitchCorrection(options.pitchCorrection);
   }
@@ -69,6 +70,11 @@ class AudioPlayer {
   bool _pauseAtItemEnd = false;
   MediaControls? _mediaControls;
   bool _disposed = false;
+
+  /// Times the current wait for audio, while [_stallPolicy] is set.
+  StallPolicy? _stallPolicy;
+  Timer? _reconnectTimer;
+  Timer? _giveUpTimer;
 
   // ── Observable state ─────────────────────────────────────────────────
 
@@ -209,6 +215,7 @@ class AudioPlayer {
     _pendingLoad = null;
     _stopped = true;
     _cued = null;
+    _stopStallClock();
     _engine.stop();
     _pollPositions();
   }
@@ -327,6 +334,18 @@ class AudioPlayer {
     _engine.pauseAtItemEnd = value;
   }
 
+  /// What the player does when it waits for audio it should be playing:
+  /// reconnects, then gives up with [ItemFailed]. Null waits as long as the
+  /// platform does. A new policy times the current wait from the start.
+  StallPolicy? get stallPolicy => _stallPolicy;
+
+  set stallPolicy(StallPolicy? policy) {
+    _checkNotDisposed();
+    if (policy == _stallPolicy) return;
+    _stallPolicy = policy;
+    _restartStallClock();
+  }
+
   // ── Queue edits ──────────────────────────────────────────────────────
 
   Future<void> add(AudioSource source) => insert(_queue.length, source);
@@ -417,6 +436,7 @@ class AudioPlayer {
     if (_disposed) return;
     _disposed = true;
     _pendingLoad?.interrupt();
+    _stopStallClock();
     await _subscription.cancel();
     _engine.dispose();
     _positions.close();
@@ -441,6 +461,7 @@ class AudioPlayer {
     _engine.setItem(EngineItem(instance.id, entry.source), position);
     _queueChanged();
     _pollPositions();
+    _restartStallClock();
     return pending.future;
   }
 
@@ -467,6 +488,7 @@ class AudioPlayer {
     _stopped = false;
     _currentFailed = false;
     _duration.value = null;
+    _stopStallClock();
     _engine.setItem(null, Duration.zero);
     _pollPositions();
   }
@@ -546,6 +568,7 @@ class AudioPlayer {
       pending.complete(_engine.duration);
     }
     _pollPositions();
+    _watchForStall();
   }
 
   /// The engine advanced into the cued item by itself.
@@ -557,6 +580,7 @@ class AudioPlayer {
     _duration.value = cued.entry.source.metadata?.duration;
     _queueChanged();
     _pollPositions();
+    _restartStallClock();
   }
 
   void _onItemEnded(int itemId) {
@@ -571,7 +595,8 @@ class AudioPlayer {
     );
   }
 
-  void _onItemFailed(int itemId, AudioError error) {
+  /// [position] is where the item failed, when the engine no longer holds it.
+  void _onItemFailed(int itemId, AudioError error, {Duration? position}) {
     final entry = _recent[itemId];
     if (entry == null) return;
     final pending = _pendingLoad;
@@ -592,9 +617,10 @@ class AudioPlayer {
     if (itemId != _current?.id) return;
 
     final wasPlaying = _state.value.playing;
-    _resumePosition = _engine.position;
+    _resumePosition = position ?? _engine.position;
     _currentFailed = true;
     _cued = null;
+    _stopStallClock();
     if (_consecutiveErrors < options.maxSkipsOnError) {
       final next = _queue.after(entry, automatic: false);
       if (next != null && next != entry) {
@@ -620,6 +646,89 @@ class AudioPlayer {
       MediaCommand.skipBackward => seekBy(-interval),
       MediaCommand.changeSpeed => setSpeed(event.speed ?? 1),
     });
+  }
+
+  // ── Stalls ───────────────────────────────────────────────────────────
+
+  /// Whether someone waits for audio: the player is playing, or a [setSource]
+  /// waits for the item to load.
+  bool get _wantsAudio {
+    if (_current == null || _stopped || _currentFailed) return false;
+    return _state.value.playing || _pendingLoad != null;
+  }
+
+  /// Starts timing when a wait begins, and stops when audio plays or nobody
+  /// waits any more. A wait already being timed goes on. Idle neither starts
+  /// nor ends one: the engine reports it for a moment whenever it replaces
+  /// an item, a reconnect's included.
+  void _watchForStall() {
+    final policy = _stallPolicy;
+    if (policy == null || !_wantsAudio) {
+      _stopStallClock();
+      return;
+    }
+    switch (_state.value.processingState) {
+      case ProcessingState.ready || ProcessingState.completed:
+        _stopStallClock();
+      case ProcessingState.idle:
+        break;
+      case ProcessingState.loading || ProcessingState.buffering:
+        if (_giveUpTimer != null) return;
+        final reconnectAfter = policy.reconnectAfter;
+        if (reconnectAfter != null && reconnectAfter < policy.giveUpAfter) {
+          _reconnectTimer = Timer(reconnectAfter, _reconnectStalled);
+        }
+        _giveUpTimer = Timer(policy.giveUpAfter, _giveUpStalled);
+    }
+  }
+
+  /// Times a wait from now: one for a new item, or under a new policy.
+  void _restartStallClock() {
+    _stopStallClock();
+    _watchForStall();
+  }
+
+  void _stopStallClock() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _giveUpTimer?.cancel();
+    _giveUpTimer = null;
+  }
+
+  /// Loads the waiting item again where it is, so that it reads over new
+  /// connections. The wait goes on being timed, and a [setSource] waiting for
+  /// the item waits for the new attempt instead.
+  void _reconnectStalled() {
+    _reconnectTimer = null;
+    final stalled = _current;
+    if (stalled == null || !_wantsAudio) return;
+    final position = _engine.position;
+    final instance = _instance(stalled.entry);
+    _current = instance;
+    _cued = null;
+    final pending = _pendingLoad;
+    if (pending != null && pending.id == stalled.id) pending.id = instance.id;
+    _engine.setItem(EngineItem(instance.id, stalled.entry.source), position);
+    _queueChanged();
+    _pollPositions();
+  }
+
+  /// Fails the waiting item the way the engine fails one: idle where it was,
+  /// for [play] to try again.
+  void _giveUpStalled() {
+    _giveUpTimer = null;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    final stalled = _current;
+    final policy = _stallPolicy;
+    if (stalled == null || policy == null || !_wantsAudio) return;
+    final position = _engine.position;
+    _engine.stop();
+    _onItemFailed(
+      stalled.id,
+      AudioError(AudioErrorKind.network, 'No audio after waiting ${policy.giveUpAfter.inMilliseconds} ms'),
+      position: position,
+    );
   }
 
   /// SES-08 and BG-06, in debug builds: background playback needs the audio
@@ -661,7 +770,9 @@ final class _Instance {
 final class _PendingLoad {
   _PendingLoad(this.id);
 
-  final int id;
+  /// The instance whose load this waits for; a reconnect moves it to the new
+  /// instance.
+  int id;
   final _completer = Completer<Duration?>();
 
   Future<Duration?> get future => _completer.future;

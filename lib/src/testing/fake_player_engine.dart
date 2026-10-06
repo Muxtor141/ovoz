@@ -7,7 +7,7 @@ import 'package:ovoz/src/player_state.dart';
 
 /// A [PlayerEngine] that plays nothing and behaves like the native one: the
 /// same events, in the same order. Tests drive time with [completeLoad],
-/// [finishItem], [failCurrent] and friends.
+/// [finishItem], [startBuffering], [failCurrent] and friends.
 ///
 /// Events are delivered asynchronously, as the native engine's are; let them
 /// arrive (`await pumpEventQueue()`) before checking the player.
@@ -83,6 +83,16 @@ class FakePlayerEngine implements PlayerEngine {
     _setState(ProcessingState.ready);
   }
 
+  /// The current item runs out of audio, as on a connection that went quiet:
+  /// the engine waits for more.
+  void startBuffering() {
+    if (currentItem == null) throw StateError('Nothing is loaded');
+    _setState(ProcessingState.buffering);
+  }
+
+  /// Audio arrives again after [startBuffering].
+  void finishBuffering() => _setState(ProcessingState.ready);
+
   /// The current item fails; the engine stops wanting playback, like the
   /// native one.
   void failCurrent([AudioError error = const AudioError(AudioErrorKind.network, 'test failure')]) {
@@ -110,6 +120,8 @@ class FakePlayerEngine implements PlayerEngine {
   @override
   void setItem(EngineItem? item, Duration position) {
     log.add('setItem(${item?.id}, ${position.inMilliseconds})');
+    // The native engine reports idle for a moment while it replaces an item.
+    if (currentItem != null) _setState(ProcessingState.idle);
     currentItem = item;
     nextItem = null;
     this.position = position;

@@ -93,6 +93,7 @@ Confirmed (✓) or changed (Δ) against the plan.
 | BG-04 | `MPNowPlayingInfoCenter.playbackState` is set explicitly; without it MediaRemote reported the app paused while it played. | new |
 | PL-05 / PL-06 | `previousRestartThreshold` (zero = always previous); `maxSkipsOnError` (zero = stop, like Mutolaa's fork). A failed item is retried by `play()`. | ✓ |
 | — | `play()` returns immediately (just_audio's completes when playback ends). `stop()` keeps queue and position. `ItemCompleted` is sent once per natural end, never for skips. | new |
+| — | **Stalls are the Dart player's call**, under an opt-in `StallPolicy`. It times a wait from the states the engine already reports: loading or buffering (on iOS, AVPlayer waiting `.toMinimizeStalls`) while playing or while a `setSource` waits. Then it reloads the item once in a new instance (new connections; a waiting `setSource` follows it), and gives up with a `network` `ItemFailed`. Idle neither starts nor ends a wait: the engine reports idle for a moment whenever it replaces an item (the `timeControlStatus` observer runs inside `removeAllItems`), which at first restarted the clock on every reconnect; `FakePlayerEngine` now does the same. No new native API, so a future Android engine gets it as is. Without a policy a quiet connection waits for the platform: for an encrypted stream, URLSession's 60 s timeout, retried twice. | new |
 
 ---
 
@@ -213,8 +214,8 @@ checked: the stripped framework still exports the trampolines and classes.
 |---|---|---|---|
 | Cross-implementation | OpenSSL test vectors decrypt with Mutolaa's own PointyCastle code, whole and at 200 random offsets; counter carry; AES-256 + IV in header | `flutter test test/cross_implementation_test.dart` | 5 |
 | Native, macOS | cipher (500 random ranges), file and HTTP byte sources (ranges, auth, 200-instead-of-206, compression, dropped connections), resource loader with AVFoundation (load, wrong key, HTTP, on-demand reading of a 16 MB file), AVPlayer playback + exact seek to the end | `cd ios/native_tests && swift test` | 20 |
-| Dart unit | queue order/shuffle/loop; player against `FakePlayerEngine`: loading, interruption of loads, failures and retry, advancing, loop one/all, pause at item end, navigation, stop/resume, queue edits, skip on error, media commands, streams | `flutter test` | 35 |
-| On device (simulator) | the real engine through the public API: encrypted MP3/AAC, exact seeks, initial positions, gapless advance with exactly-once completion, pause at item end, clip loop, next/previous/jump, stop/resume, wrong key, missing file, simultaneous players, encrypted HTTP streaming with a bearer token, header-only streaming, refused requests, a player kept alive only by its own pending load | `cd example && flutter test integration_test -d <id>` | 16 |
+| Dart unit | queue order/shuffle/loop; player against `FakePlayerEngine`: loading, interruption of loads, failures and retry, advancing, loop one/all, pause at item end, navigation, stop/resume, queue edits, skip on error, stalls (reconnect, give up, a load retried, recovery and pause ending a wait), media commands, streams | `flutter test` | 38 |
+| On device (simulator) | the real engine through the public API: encrypted MP3/AAC, exact seeks, initial positions, gapless advance with exactly-once completion, pause at item end, clip loop, next/previous/jump, stop/resume, wrong key, missing file, simultaneous players, encrypted HTTP streaming with a bearer token, header-only streaming, refused requests, a player kept alive only by its own pending load, a server that goes quiet (retried, then given up on; or coming back) | `cd example && flutter test integration_test -d <id>` | 18 |
 
 Checked by hand on the simulator: the demo screens; the lock screen and
 Dynamic Island show title, artist and artwork; MediaRemote receives all
@@ -238,8 +239,7 @@ changes, 60+ minutes with the screen off, memory over long sessions
    jnigen (as planned) keeps calls synchronous; Pigeon is the lower-risk
    option if jnigen fights Media3's service model. The Dart queue and all its
    tests carry over unchanged.
-3. Smaller items: a "stalled" engine event from `AVPlayerItemPlaybackStalled`;
-   recovery after media-services reset; an opt-in precise-duration flag for
-   VBR MP3 without a Xing header; an on-demand key provider; a ciphertext
-   disk cache for remote encrypted files; Opus/Ogg (needs a decoder);
-   CarPlay.
+3. Smaller items: recovery after media-services reset; an opt-in
+   precise-duration flag for VBR MP3 without a Xing header; an on-demand key
+   provider; a ciphertext disk cache for remote encrypted files; Opus/Ogg
+   (needs a decoder); CarPlay.

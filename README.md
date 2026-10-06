@@ -96,6 +96,22 @@ throw for playback failures: those arrive as `ItemFailed` and leave the player
 idle, and `play()` retries the failed item where it stopped. Only `setSource`
 and `setQueue` wait for the item to load, and throw if it cannot.
 
+### Stalls
+
+A connection that goes quiet without an error leaves the player waiting for
+audio for as long as the platform waits, which can be minutes. A
+`StallPolicy` sets a limit. After `reconnectAfter`, the player loads the item
+again where it is, over new connections. After `giveUpAfter`, the item fails
+with a `network` error like any other failure. A load that never finishes
+counts as a wait too.
+
+```dart
+player.stallPolicy = const StallPolicy(
+  reconnectAfter: Duration(seconds: 6),
+  giveUpAfter: Duration(seconds: 30),
+);
+```
+
 ### Several players
 
 ```dart

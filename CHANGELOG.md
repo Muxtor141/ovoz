@@ -1,3 +1,12 @@
+## 0.1.0-dev.3
+
+- `StallPolicy` (`AudioPlayer.stallPolicy`, `PlayerOptions.stallPolicy`): a
+  player that waits for audio it should be playing reloads the item once
+  over new connections, then gives up with an `ItemFailed` of kind
+  `network`. Off by default.
+- `FakePlayerEngine.startBuffering` and `finishBuffering`, to drive a stall
+  in tests.
+
 ## 0.1.0-dev.2
 
 - Fixed: local encrypted files are read as they play instead of 30–50 MB

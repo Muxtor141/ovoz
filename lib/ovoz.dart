@@ -17,7 +17,7 @@ export 'src/audio_player.dart' show AudioPlayer;
 export 'src/audio_source.dart' show AesCtrEncryption, AudioFormat, AudioSource, ClipRange, MediaMetadata;
 export 'src/media_controls.dart' show MediaCommand, MediaCommandEvent, MediaCommandHandler, MediaControls;
 export 'src/player_event.dart' show ItemCompleted, ItemFailed, PlayerEvent;
-export 'src/player_options.dart' show PlayerOptions;
+export 'src/player_options.dart' show PlayerOptions, StallPolicy;
 export 'src/player_state.dart' show LoopMode, PitchCorrection, PlaybackProgress, PlayerState, ProcessingState;
 export 'src/queue/play_queue.dart' show QueueState;
 export 'src/session/audio_session.dart' show AudioSession;

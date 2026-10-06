@@ -16,6 +16,13 @@ class LocalServer {
   final _cache = <String, Uint8List>{};
   final requests = <String>[];
 
+  /// When set, no byte at or past this offset of a file is sent: a request
+  /// that reaches it gets the bytes before it and then nothing, its
+  /// connection left open, as on a network that went quiet. Requests made
+  /// after it is cleared are served in full.
+  int? stallAt;
+  final _closed = Completer<void>();
+
   Uri url(String asset) => Uri.parse('http://127.0.0.1:${_server.port}/$asset');
 
   static Future<LocalServer> start() async {
@@ -24,7 +31,10 @@ class LocalServer {
     return server;
   }
 
-  Future<void> close() => _server.close(force: true);
+  Future<void> close() {
+    if (!_closed.isCompleted) _closed.complete();
+    return _server.close(force: true);
+  }
 
   Future<void> _handle(HttpRequest request) async {
     final response = request.response;
@@ -58,6 +68,12 @@ class LocalServer {
       response.headers.set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/${body.length}');
     }
     response.contentLength = end - start + 1;
+    final limit = stallAt;
+    if (limit != null && end >= limit) {
+      if (request.method != 'HEAD' && start < limit) response.add(Uint8List.sublistView(body, start, limit));
+      await response.flush();
+      return _closed.future;
+    }
     if (request.method != 'HEAD') response.add(Uint8List.sublistView(body, start, end + 1));
     await response.close();
   }

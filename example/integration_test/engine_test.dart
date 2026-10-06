@@ -268,5 +268,55 @@ void main() {
         throwsA(isA<AudioError>().having((e) => e.kind, 'kind', AudioErrorKind.sourceNotFound)),
       );
     });
+
+    testWidgets('a load that gets no audio is retried, then given up on as a network failure', (_) async {
+      server.stallAt = 1024;
+      player.stallPolicy = const StallPolicy(
+        reconnectAfter: Duration(seconds: 1),
+        giveUpAfter: Duration(seconds: 3),
+      );
+      await player.play();
+      final load = player.setSource(
+        AudioSource.url(
+          server.url('song_b.m4a'),
+          headers: const {'Authorization': 'Bearer ${LocalServer.token}'},
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      final firstAttempt = server.requests.length;
+      expect(firstAttempt, greaterThan(0));
+
+      await expectLater(
+        load,
+        throwsA(isA<AudioError>().having((e) => e.kind, 'kind', AudioErrorKind.network)),
+      );
+      expect(server.requests.length, greaterThan(firstAttempt), reason: 'the reconnect asks again');
+      await until(() => events.isNotEmpty && !player.playing);
+      expect(events.single, isA<ItemFailed>());
+      expect(player.processingState, ProcessingState.idle);
+    });
+
+    testWidgets('a stalled load goes on once the connection comes back, and setSource completes', (_) async {
+      server.stallAt = 1024;
+      player.stallPolicy = const StallPolicy(
+        reconnectAfter: Duration(seconds: 1),
+        giveUpAfter: Duration(seconds: 6),
+      );
+      await player.play();
+      final load = player.setSource(
+        AudioSource.url(
+          server.url('song_b.m4a'),
+          headers: const {'Authorization': 'Bearer ${LocalServer.token}'},
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      expect(player.processingState, ProcessingState.loading);
+
+      // New connections only: the open ones stay quiet.
+      server.stallAt = null;
+      expect(await load, isNotNull);
+      await until(() => player.position > const Duration(milliseconds: 500));
+      expect(events, isEmpty);
+    });
   });
 }
