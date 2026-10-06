@@ -2,7 +2,7 @@ PODS:
   - Flutter (1.0.0)
   - integration_test (0.0.1):
     - Flutter
-  - ovoz (0.0.1):
+  - ovoz (0.1.0):
     - Flutter
 
 DEPENDENCIES:
@@ -21,7 +21,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
-  ovoz: d06f9ac98223b2c41994b67b0b165aea83371c43
+  ovoz: 806bdae54df4f4387efa0ce7ccb9ceea09a799db
 
 PODFILE CHECKSUM: 288656d4464589360115d6f81dd5d8f559352730
 
