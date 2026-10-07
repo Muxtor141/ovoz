@@ -23,10 +23,14 @@ class LocalServer {
   int? stallAt;
   final _closed = Completer<void>();
 
-  Uri url(String asset) => Uri.parse('http://127.0.0.1:${_server.port}/$asset');
+  Uri url(String asset) => Uri.parse('http://127.0.0.1:$port/$asset');
 
-  static Future<LocalServer> start() async {
-    final server = LocalServer._(await HttpServer.bind(InternetAddress.loopbackIPv4, 0));
+  int get port => _server.port;
+
+  /// Listens on [port]; any free one when 0. A server closed and started
+  /// again on its port is a server that was down for a while.
+  static Future<LocalServer> start({int port = 0}) async {
+    final server = LocalServer._(await HttpServer.bind(InternetAddress.loopbackIPv4, port));
     server._server.listen(server._handle);
     return server;
   }

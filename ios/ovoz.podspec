@@ -17,7 +17,7 @@ Pod::Spec.new do |s|
   s.public_header_files = []
   s.dependency 'Flutter'
   s.platform = :ios, '15.0'
-  s.frameworks = 'AVFoundation', 'MediaPlayer'
+  s.frameworks = 'AVFoundation', 'MediaPlayer', 'Network'
   s.requires_arc = true
 
   # Flutter.framework does not contain a i386 slice.

@@ -1,3 +1,21 @@
+## 0.1.0-dev.4
+
+- `StallPolicy` handles the network. A dropped connection is a wait, not a
+  failure: the player stays playing, tries the item again shortly, and loads
+  it at once when the network comes back. Offline, waits are not timed and
+  never given up on. A network switch (Wi-Fi to cellular) reloads a waiting
+  item at once.
+- The engine reports the network (`NWPathMonitor`): new
+  `PlayerEngine.networkAvailable` and `EngineNetworkChanged`, and
+  `FakePlayerEngine.changeNetwork` to drive them in tests.
+- Fixed: on iOS an item's failure arrived after the idle, not-playing state
+  it causes, so a player could not tell that playback had been wanted.
+- Giving up on a stall pauses the player where it was, the item still current
+  and on the lock screen, instead of emptying the engine (which cleared the
+  lock screen as if playback had been discarded).
+- Fixed: an item that failed before reaching its start position reported
+  position 0, so `play()` started it over from the beginning.
+
 ## 0.1.0-dev.3
 
 - `StallPolicy` (`AudioPlayer.stallPolicy`, `PlayerOptions.stallPolicy`): a

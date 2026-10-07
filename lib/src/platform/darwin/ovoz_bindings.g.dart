@@ -28,6 +28,19 @@ external void _zs4y1d_protocolTrampoline_107vku4(
   ffi.Void Function(
     ffi.Pointer<objc.ObjCObjectImpl>,
     ffi.Pointer<ffi.Void>,
+    ffi.Bool,
+  )
+>()
+external void _zs4y1d_protocolTrampoline_10lndml(
+  ffi.Pointer<objc.ObjCObjectImpl> target,
+  ffi.Pointer<ffi.Void> arg0,
+  bool arg1,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<objc.ObjCObjectImpl>,
+    ffi.Pointer<ffi.Void>,
     ffi.Int64,
   )
 >()
@@ -132,6 +145,26 @@ external void _zs4y1d_protocolTrampoline_vx8uur(
   )
 >(isLeaf: true)
 external ffi.Pointer<objc.ObjCBlockImpl> _zs4y1d_wrapBlockingBlock_107vku4(
+  int port,
+  ffi.Pointer<objc.DOBJC_Context> context,
+  ffi.Pointer<
+    ffi.NativeFunction<ffi.Void Function(ffi.Pointer<objc.ObjCObjectImpl> args)>
+  >
+  directInvoke,
+);
+
+@ffi.Native<
+  ffi.Pointer<objc.ObjCBlockImpl> Function(
+    ffi.Int64,
+    ffi.Pointer<objc.DOBJC_Context>,
+    ffi.Pointer<
+      ffi.NativeFunction<
+        ffi.Void Function(ffi.Pointer<objc.ObjCObjectImpl> args)
+      >
+    >,
+  )
+>(isLeaf: true)
+external ffi.Pointer<objc.ObjCBlockImpl> _zs4y1d_wrapBlockingBlock_10lndml(
   int port,
   ffi.Pointer<objc.DOBJC_Context> context,
   ffi.Pointer<
@@ -287,6 +320,17 @@ external ffi.Pointer<objc.ObjCBlockImpl> _zs4y1d_wrapBlockingBlock_vx8uur(
   )
 >(isLeaf: true)
 external ffi.Pointer<objc.ObjCBlockImpl> _zs4y1d_wrapListenerBlock_107vku4(
+  int port,
+  ffi.Pointer<objc.DOBJC_Context> context,
+);
+
+@ffi.Native<
+  ffi.Pointer<objc.ObjCBlockImpl> Function(
+    ffi.Int64,
+    ffi.Pointer<objc.DOBJC_Context>,
+  )
+>(isLeaf: true)
+external ffi.Pointer<objc.ObjCBlockImpl> _zs4y1d_wrapListenerBlock_10lndml(
   int port,
   ffi.Pointer<objc.DOBJC_Context> context,
 );
@@ -1835,6 +1879,186 @@ extension ObjCBlock_ffiVoid_ffiVoid_NSInteger_ffiDouble$CallExtension
   }
 }
 
+/// Construction methods for `objc.ObjCBlock<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>`.
+abstract final class ObjCBlock_ffiVoid_ffiVoid_bool {
+  /// Returns a block that wraps the given raw block pointer.
+  static objc.ObjCBlock<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>
+  fromPointer(
+    ffi.Pointer<objc.ObjCBlockImpl> pointer, {
+    bool retain = false,
+    bool release = false,
+  }) => objc.ObjCBlock<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>(
+    pointer,
+    retain: retain,
+    release: release,
+  );
+
+  /// Creates a block from a C function pointer.
+  ///
+  /// This block must be invoked by native code running on the same thread as
+  /// the isolate that registered it. Invoking the block on the wrong thread
+  /// will result in a crash.
+  static objc.ObjCBlock<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>
+  fromFunctionPointer(
+    ffi.Pointer<
+      ffi.NativeFunction<
+        ffi.Void Function(ffi.Pointer<ffi.Void> arg0, ffi.Bool arg1)
+      >
+    >
+    ptr,
+  ) => objc.ObjCBlock<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>(
+    objc.newPointerBlock(_fnPtrCallable, ptr.cast()),
+    retain: false,
+    release: true,
+  );
+
+  /// Creates a block from a Dart function.
+  ///
+  /// This block must be invoked by native code running on the same thread as
+  /// the isolate that registered it. Invoking the block on the wrong thread
+  /// will result in a crash.
+  ///
+  /// If `keepIsolateAlive` is true, this block will keep this isolate alive
+  /// until it is garbage collected by both Dart and ObjC.
+  static objc.ObjCBlock<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>
+  fromFunction(
+    void Function(ffi.Pointer<ffi.Void>, bool) fn, {
+    bool keepIsolateAlive = true,
+  }) => objc.ObjCBlock<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>(
+    objc.newClosureBlock(_closureCallable, (
+      ffi.Pointer<ffi.Void> arg0,
+      bool arg1,
+    ) {
+      return fn(arg0, arg1);
+    }, keepIsolateAlive),
+    retain: false,
+    release: true,
+  );
+
+  /// Creates a listener block from a Dart function.
+  ///
+  /// This block can be invoked from any thread, but only supports void
+  /// functions, and is not run synchronously. Async functions (ie returning
+  /// Future<void>) are not supported.
+  ///
+  /// If `keepIsolateAlive` is true, this block will keep this isolate alive
+  /// until it is garbage collected by both Dart and ObjC.
+  static objc.ObjCBlock<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>
+  listener(
+    void Function(ffi.Pointer<ffi.Void>, bool) fn, {
+    bool keepIsolateAlive = true,
+  }) {
+    return objc.ObjCBlock<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>(
+      objc.newBlockPort(_zs4y1d_wrapListenerBlock_10lndml, (
+        ffi.Pointer<objc.ObjCObjectImpl> rawArgs,
+      ) {
+        final args = _BlockArgs_wpl2gn.fromPointer(
+          rawArgs,
+          retain: false,
+          release: false,
+        );
+
+        fn(args.arg0, args.arg1);
+      }, keepIsolateAlive),
+      retain: false,
+      release: true,
+    );
+  }
+
+  /// Creates a blocking block from a Dart function.
+  ///
+  /// This callback can be invoked from any native thread, and will block the
+  /// caller until the callback is handled by the Dart isolate that created
+  /// the block. Async functions (ie returning Future<void>) are not supported.
+  ///
+  /// If `keepIsolateAlive` is true, this block will keep this isolate alive
+  /// until it is garbage collected by both Dart and ObjC. If the owner isolate
+  /// has shut down, and the block is invoked by native code, it may block
+  /// indefinitely, or have other undefined behavior.
+  static objc.ObjCBlock<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>
+  blocking(
+    void Function(ffi.Pointer<ffi.Void>, bool) fn, {
+    bool keepIsolateAlive = true,
+  }) {
+    return objc.ObjCBlock<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>(
+      objc.newBlockingBlockPort(_zs4y1d_wrapBlockingBlock_10lndml, (
+        ffi.Pointer<objc.ObjCObjectImpl> rawArgs,
+      ) {
+        final args = _BlockArgs_wpl2gn.fromPointer(
+          rawArgs,
+          retain: false,
+          release: false,
+        );
+
+        fn(args.arg0, args.arg1);
+      }, keepIsolateAlive),
+      retain: false,
+      release: true,
+    );
+  }
+
+  static void _fnPtrTrampoline(
+    ffi.Pointer<objc.ObjCBlockImpl> block,
+    ffi.Pointer<ffi.Void> arg0,
+    bool arg1,
+  ) => block.ref.target
+      .cast<
+        ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<ffi.Void> arg0, ffi.Bool arg1)
+        >
+      >()
+      .asFunction<void Function(ffi.Pointer<ffi.Void>, bool)>()(arg0, arg1);
+  static ffi.Pointer<ffi.Void> _fnPtrCallable =
+      ffi.Pointer.fromFunction<
+            ffi.Void Function(
+              ffi.Pointer<objc.ObjCBlockImpl>,
+              ffi.Pointer<ffi.Void>,
+              ffi.Bool,
+            )
+          >(_fnPtrTrampoline)
+          .cast();
+  static void _closureTrampoline(
+    ffi.Pointer<objc.ObjCBlockImpl> block,
+    ffi.Pointer<ffi.Void> arg0,
+    bool arg1,
+  ) =>
+      (objc.getBlockClosure(block)
+          as void Function(ffi.Pointer<ffi.Void>, bool))(arg0, arg1);
+  static ffi.Pointer<ffi.Void> _closureCallable =
+      ffi.Pointer.fromFunction<
+            ffi.Void Function(
+              ffi.Pointer<objc.ObjCBlockImpl>,
+              ffi.Pointer<ffi.Void>,
+              ffi.Bool,
+            )
+          >(_closureTrampoline)
+          .cast();
+}
+
+/// Call operator for `objc.ObjCBlock<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>`.
+extension ObjCBlock_ffiVoid_ffiVoid_bool$CallExtension
+    on objc.ObjCBlock<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)> {
+  void call(ffi.Pointer<ffi.Void> arg0, bool arg1) {
+    return ref.pointer.ref.invoke
+        .cast<
+          ffi.NativeFunction<
+            ffi.Void Function(
+              ffi.Pointer<objc.ObjCBlockImpl> block,
+              ffi.Pointer<ffi.Void> arg0,
+              ffi.Bool arg1,
+            )
+          >
+        >()
+        .asFunction<
+          void Function(
+            ffi.Pointer<objc.ObjCBlockImpl>,
+            ffi.Pointer<ffi.Void>,
+            bool,
+          )
+        >()(ref.pointer, arg0, arg1);
+  }
+}
+
 /// Construction methods for `objc.ObjCBlock<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool, ffi.Bool)>`.
 abstract final class ObjCBlock_ffiVoid_ffiVoid_bool_bool {
   /// Returns a block that wraps the given raw block pointer.
@@ -2427,6 +2651,13 @@ extension OvozPlayer$Methods on OvozPlayer {
     return OvozPlayer.fromPointer($ret, retain: false, release: true);
   }
 
+  /// Whether the device has a network, as last reported; true until the
+  /// first report.
+  bool get isNetworkAvailable {
+    final _$$ref = object$.ref;
+    return _objc_msgSend_91o635(_$$ref.pointer, _sel_isNetworkAvailable);
+  }
+
   /// isPlaying
   bool get isPlaying {
     final _$$ref = object$.ref;
@@ -2612,6 +2843,13 @@ extension OvozPlayerListener$Methods on OvozPlayerListener {
     _objc_msgSend_17gvxvj(_$$ref.pointer, _sel_onItemStarted_, itemId);
   }
 
+  /// The network came back, went away, or moved to another interface (Wi-Fi
+  /// to cellular): [available] is whether there is one now.
+  void onNetworkChanged(bool available) {
+    final _$$ref = object$.ref;
+    _objc_msgSend_1s56lr9(_$$ref.pointer, _sel_onNetworkChanged_, available);
+  }
+
   /// A lock-screen, headset or car command, for the player that owns the
   /// media controls. [command] is an [OvozRemoteCommand]; [value] carries the
   /// position or interval in milliseconds, or the rate.
@@ -2653,6 +2891,7 @@ interface class OvozPlayerListener$Builder {
     required void Function(int, int, objc.NSString) onError_code_message_,
     required void Function(int) onItemEnded_,
     required void Function(int) onItemStarted_,
+    required void Function(bool) onNetworkChanged_,
     required void Function(int, double) onRemoteCommand_value_,
     required void Function(int, bool) onStateChanged_playing_,
     bool $keepIsolateAlive = true,
@@ -2670,6 +2909,10 @@ interface class OvozPlayerListener$Builder {
     OvozPlayerListener$Builder.onItemStarted_.implement(
       builder,
       onItemStarted_,
+    );
+    OvozPlayerListener$Builder.onNetworkChanged_.implement(
+      builder,
+      onNetworkChanged_,
     );
     OvozPlayerListener$Builder.onRemoteCommand_value_.implement(
       builder,
@@ -2695,6 +2938,7 @@ interface class OvozPlayerListener$Builder {
     required void Function(int, int, objc.NSString) onError_code_message_,
     required void Function(int) onItemEnded_,
     required void Function(int) onItemStarted_,
+    required void Function(bool) onNetworkChanged_,
     required void Function(int, double) onRemoteCommand_value_,
     required void Function(int, bool) onStateChanged_playing_,
     bool $keepIsolateAlive = true,
@@ -2711,6 +2955,10 @@ interface class OvozPlayerListener$Builder {
     OvozPlayerListener$Builder.onItemStarted_.implement(
       builder,
       onItemStarted_,
+    );
+    OvozPlayerListener$Builder.onNetworkChanged_.implement(
+      builder,
+      onNetworkChanged_,
     );
     OvozPlayerListener$Builder.onRemoteCommand_value_.implement(
       builder,
@@ -2734,6 +2982,7 @@ interface class OvozPlayerListener$Builder {
     required void Function(int, int, objc.NSString) onError_code_message_,
     required void Function(int) onItemEnded_,
     required void Function(int) onItemStarted_,
+    required void Function(bool) onNetworkChanged_,
     required void Function(int, double) onRemoteCommand_value_,
     required void Function(int, bool) onStateChanged_playing_,
     bool $keepIsolateAlive = true,
@@ -2752,6 +3001,10 @@ interface class OvozPlayerListener$Builder {
     OvozPlayerListener$Builder.onItemStarted_.implementAsListener(
       builder,
       onItemStarted_,
+    );
+    OvozPlayerListener$Builder.onNetworkChanged_.implementAsListener(
+      builder,
+      onNetworkChanged_,
     );
     OvozPlayerListener$Builder.onRemoteCommand_value_.implementAsListener(
       builder,
@@ -2778,6 +3031,7 @@ interface class OvozPlayerListener$Builder {
     required void Function(int, int, objc.NSString) onError_code_message_,
     required void Function(int) onItemEnded_,
     required void Function(int) onItemStarted_,
+    required void Function(bool) onNetworkChanged_,
     required void Function(int, double) onRemoteCommand_value_,
     required void Function(int, bool) onStateChanged_playing_,
     bool $keepIsolateAlive = true,
@@ -2795,6 +3049,10 @@ interface class OvozPlayerListener$Builder {
     OvozPlayerListener$Builder.onItemStarted_.implementAsListener(
       builder,
       onItemStarted_,
+    );
+    OvozPlayerListener$Builder.onNetworkChanged_.implementAsListener(
+      builder,
+      onNetworkChanged_,
     );
     OvozPlayerListener$Builder.onRemoteCommand_value_.implementAsListener(
       builder,
@@ -2818,6 +3076,7 @@ interface class OvozPlayerListener$Builder {
     required void Function(int, int, objc.NSString) onError_code_message_,
     required void Function(int) onItemEnded_,
     required void Function(int) onItemStarted_,
+    required void Function(bool) onNetworkChanged_,
     required void Function(int, double) onRemoteCommand_value_,
     required void Function(int, bool) onStateChanged_playing_,
     bool $keepIsolateAlive = true,
@@ -2836,6 +3095,10 @@ interface class OvozPlayerListener$Builder {
     OvozPlayerListener$Builder.onItemStarted_.implementAsBlocking(
       builder,
       onItemStarted_,
+    );
+    OvozPlayerListener$Builder.onNetworkChanged_.implementAsBlocking(
+      builder,
+      onNetworkChanged_,
     );
     OvozPlayerListener$Builder.onRemoteCommand_value_.implementAsBlocking(
       builder,
@@ -2862,6 +3125,7 @@ interface class OvozPlayerListener$Builder {
     required void Function(int, int, objc.NSString) onError_code_message_,
     required void Function(int) onItemEnded_,
     required void Function(int) onItemStarted_,
+    required void Function(bool) onNetworkChanged_,
     required void Function(int, double) onRemoteCommand_value_,
     required void Function(int, bool) onStateChanged_playing_,
     bool $keepIsolateAlive = true,
@@ -2879,6 +3143,10 @@ interface class OvozPlayerListener$Builder {
     OvozPlayerListener$Builder.onItemStarted_.implementAsBlocking(
       builder,
       onItemStarted_,
+    );
+    OvozPlayerListener$Builder.onNetworkChanged_.implementAsBlocking(
+      builder,
+      onNetworkChanged_,
     );
     OvozPlayerListener$Builder.onRemoteCommand_value_.implementAsBlocking(
       builder,
@@ -3044,6 +3312,40 @@ interface class OvozPlayerListener$Builder {
         ),
         (void Function(int) func) => ObjCBlock_ffiVoid_ffiVoid_Int64.blocking(
           (ffi.Pointer<ffi.Void> _, int arg1) => func(arg1),
+        ),
+      );
+
+  /// The network came back, went away, or moved to another interface (Wi-Fi
+  /// to cellular): [available] is whether there is one now.
+  static final onNetworkChanged_ =
+      objc.ObjCProtocolListenableMethod<void Function(bool)>(
+        _protocol_OvozPlayerListener,
+        _sel_onNetworkChanged_,
+        ffi.Native.addressOf<
+              ffi.NativeFunction<
+                ffi.Void Function(
+                  ffi.Pointer<objc.ObjCObjectImpl>,
+                  ffi.Pointer<ffi.Void>,
+                  ffi.Bool,
+                )
+              >
+            >(_zs4y1d_protocolTrampoline_10lndml)
+            .cast(),
+        objc.getProtocolMethodSignature(
+          _protocol_OvozPlayerListener,
+          _sel_onNetworkChanged_,
+          isRequired: true,
+          isInstanceMethod: true,
+        ),
+        (void Function(bool) func) =>
+            ObjCBlock_ffiVoid_ffiVoid_bool.fromFunction(
+              (ffi.Pointer<ffi.Void> _, bool arg1) => func(arg1),
+            ),
+        (void Function(bool) func) => ObjCBlock_ffiVoid_ffiVoid_bool.listener(
+          (ffi.Pointer<ffi.Void> _, bool arg1) => func(arg1),
+        ),
+        (void Function(bool) func) => ObjCBlock_ffiVoid_ffiVoid_bool.blocking(
+          (ffi.Pointer<ffi.Void> _, bool arg1) => func(arg1),
         ),
       );
 
@@ -3909,6 +4211,44 @@ extension _BlockArgs_nzftw3$Methods on _BlockArgs_nzftw3 {
   }
 }
 
+extension type _BlockArgs_wpl2gn._(objc.ObjCObject object$)
+    implements objc.ObjCObject {
+  /// Constructs a [_BlockArgs_wpl2gn] that points to the same underlying object as [other].
+  _BlockArgs_wpl2gn.as(objc.ObjCObject other) : object$ = other {
+    assert(isA(object$));
+  }
+
+  /// Constructs a [_BlockArgs_wpl2gn] that wraps the given raw object pointer.
+  _BlockArgs_wpl2gn.fromPointer(
+    ffi.Pointer<objc.ObjCObjectImpl> other, {
+    bool retain = false,
+    bool release = false,
+  }) : object$ = objc.ObjCObject(other, retain: retain, release: release) {
+    assert(isA(object$));
+  }
+
+  /// Returns whether [obj] is an instance of [_BlockArgs_wpl2gn].
+  static bool isA(objc.ObjCObject? obj) => obj == null
+      ? false
+      : _objc_msgSend_19nvye5(
+          obj.ref.pointer,
+          _sel_isKindOfClass_,
+          _class__BlockArgs_wpl2gn,
+        );
+}
+
+extension _BlockArgs_wpl2gn$Methods on _BlockArgs_wpl2gn {
+  ffi.Pointer<ffi.Void> get arg0 {
+    final _$$ref = object$.ref;
+    return _objc_msgSend_6ex6p5(_$$ref.pointer, _sel_arg0);
+  }
+
+  bool get arg1 {
+    final _$$ref = object$.ref;
+    return _objc_msgSend_91o635(_$$ref.pointer, _sel_arg1);
+  }
+}
+
 extension type _BlockArgs_x3obyb._(objc.ObjCObject object$)
     implements objc.ObjCObject {
   /// Constructs a [_BlockArgs_x3obyb] that points to the same underlying object as [other].
@@ -4082,6 +4422,16 @@ final _class__BlockArgs_nzftw3 = objc.getClass(
   "_zs4y1d_BlockArgs_5si851",
   () => ffi.Native.addressOf<ffi.Pointer<objc.ObjCObjectImpl>>(
     _class__BlockArgs_nzftw3_raw,
+  ).cast(),
+);
+@ffi.Native<ffi.Pointer<objc.ObjCObjectImpl>>(
+  symbol: 'OBJC_CLASS_\$__zs4y1d_BlockArgs_10lndml',
+)
+external ffi.Pointer<objc.ObjCObjectImpl> _class__BlockArgs_wpl2gn_raw;
+final _class__BlockArgs_wpl2gn = objc.getClass(
+  "_zs4y1d_BlockArgs_10lndml",
+  () => ffi.Native.addressOf<ffi.Pointer<objc.ObjCObjectImpl>>(
+    _class__BlockArgs_wpl2gn_raw,
   ).cast(),
 );
 @ffi.Native<ffi.Pointer<objc.ObjCObjectImpl>>(
@@ -4694,6 +5044,7 @@ late final _sel_init = objc.registerName("init");
 late final _sel_initWithItemId_uri_ = objc.registerName("initWithItemId:uri:");
 late final _sel_initWithListener_ = objc.registerName("initWithListener:");
 late final _sel_isKindOfClass_ = objc.registerName("isKindOfClass:");
+late final _sel_isNetworkAvailable = objc.registerName("isNetworkAvailable");
 late final _sel_isPlaying = objc.registerName("isPlaying");
 late final _sel_itemId = objc.registerName("itemId");
 late final _sel_new = objc.registerName("new");
@@ -4712,6 +5063,7 @@ late final _sel_onItemStarted_ = objc.registerName("onItemStarted:");
 late final _sel_onMediaServicesReset = objc.registerName(
   "onMediaServicesReset",
 );
+late final _sel_onNetworkChanged_ = objc.registerName("onNetworkChanged:");
 late final _sel_onRemoteCommand_value_ = objc.registerName(
   "onRemoteCommand:value:",
 );

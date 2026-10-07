@@ -318,5 +318,42 @@ void main() {
       await until(() => player.position > const Duration(milliseconds: 500));
       expect(events, isEmpty);
     });
+
+    testWidgets('a load that cannot connect is tried again until the server is back, not failed', (_) async {
+      final port = server.port;
+      final url = server.url('song_b.m4a');
+      await server.close();
+      player.stallPolicy = const StallPolicy(
+        reconnectAfter: Duration(milliseconds: 500),
+        giveUpAfter: Duration(seconds: 15),
+      );
+      await player.play();
+      final load = player.setSource(
+        AudioSource.url(url, headers: const {'Authorization': 'Bearer ${LocalServer.token}'}),
+        initialPosition: const Duration(seconds: 5),
+      );
+      await Future<void>.delayed(const Duration(seconds: 2));
+      expect(events, isEmpty, reason: 'a refused connection is a wait, not a failure');
+      expect(player.playing, isTrue);
+      expect(player.position, const Duration(seconds: 5));
+
+      server = await LocalServer.start(port: port);
+      expect(await load, isNotNull);
+      await until(() => player.position > const Duration(milliseconds: 5500));
+      expect(events, isEmpty);
+    });
+
+    testWidgets('a load that fails keeps the position it was to start at', (_) async {
+      final url = server.url('song_b.m4a');
+      await server.close();
+      await expectLater(
+        player.setSource(
+          AudioSource.url(url, headers: const {'Authorization': 'Bearer ${LocalServer.token}'}),
+          initialPosition: const Duration(seconds: 12),
+        ),
+        throwsA(isA<AudioError>()),
+      );
+      expect(player.position, const Duration(seconds: 12), reason: 'play resumes there, not at zero');
+    });
   });
 }

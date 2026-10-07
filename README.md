@@ -96,14 +96,26 @@ throw for playback failures: those arrive as `ItemFailed` and leave the player
 idle, and `play()` retries the failed item where it stopped. Only `setSource`
 and `setQueue` wait for the item to load, and throw if it cannot.
 
-### Stalls
+### Stalls and the network
 
-A connection that goes quiet without an error leaves the player waiting for
-audio for as long as the platform waits, which can be minutes. A
-`StallPolicy` sets a limit. After `reconnectAfter`, the player loads the item
-again where it is, over new connections. After `giveUpAfter`, the item fails
-with a `network` error like any other failure. A load that never finishes
-counts as a wait too.
+Without a policy, a connection that goes quiet leaves the player waiting for
+as long as the platform waits, which can be minutes. A connection that drops
+fails the item. With a `StallPolicy`, the player handles both by itself, and
+it stays playing throughout, so a pause works as ever:
+
+- After `reconnectAfter` without audio, it loads the item again where it is,
+  over new connections.
+- A dropped connection is a wait, not a failure: the item is tried again
+  shortly.
+- Offline, nothing is timed and nothing gives up. When the network comes
+  back, or the device moves from Wi-Fi to cellular, a waiting item is loaded
+  again at once.
+- After `giveUpAfter` of waiting with a network, it gives up: it pauses where
+  it was, keeping the item (on the lock screen too), and reports an
+  `ItemFailed` of kind `network`. `play()` loads the item again from there.
+
+A load that never finishes counts as a wait too. Any failed item keeps its
+position, including one that failed before it reached its start position.
 
 ```dart
 player.stallPolicy = const StallPolicy(

@@ -34,6 +34,11 @@ final class LoadedItem {
   /// Set when the item failed; it stays in the window so the state is clear.
   var failed = false
 
+  /// Where the item was when it failed: its pending start if it never got
+  /// there. A failed item reports this as its position, so that it is resumed
+  /// from there, not from zero.
+  var failedAt: CMTime?
+
   var id: Int64 { descriptor.itemId }
 
   private init(descriptor: OvozItem, playerItem: AVPlayerItem, loader: DecryptingResourceLoader?) {

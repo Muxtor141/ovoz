@@ -29,6 +29,10 @@ public protocol OvozPlayerListener: NSObjectProtocol {
   /// media controls. [command] is an [OvozRemoteCommand]; [value] carries the
   /// position or interval in milliseconds, or the rate.
   func onRemoteCommand(_ command: Int, value: Double)
+
+  /// The network came back, went away, or moved to another interface (Wi-Fi
+  /// to cellular): [available] is whether there is one now.
+  func onNetworkChanged(_ available: Bool)
 }
 
 /// Processing states; the raw values are shared with Dart's `ProcessingState`.
@@ -93,6 +97,7 @@ public final class OvozPlayer: NSObject {
     center.addObserver(self, selector: #selector(itemFailedToPlayToEnd(_:)),
                        name: AVPlayerItem.failedToPlayToEndTimeNotification, object: nil)
     OvozSessionManager.shared.register(self)
+    OvozNetworkMonitor.shared.register(self)
   }
 
   deinit {
@@ -261,6 +266,7 @@ public final class OvozPlayer: NSObject {
   @objc public var positionMs: Int64 {
     guard let current else { return 0 }
     if let pending = current.pendingStart { return current.relative(pending).milliseconds }
+    if current.failed, let at = current.failedAt { return current.relative(at).milliseconds }
     if ended, let duration = current.duration { return duration.milliseconds }
     return current.relative(current.playerItem.currentTime()).milliseconds
   }
@@ -289,6 +295,10 @@ public final class OvozPlayer: NSObject {
   @objc public var processingState: Int { state.rawValue }
 
   @objc public var isPlaying: Bool { playWhenReady }
+
+  /// Whether the device has a network, as last reported; true until the
+  /// first report.
+  @objc public var isNetworkAvailable: Bool { OvozNetworkMonitor.shared.isAvailable }
 
   // MARK: Media controls
 
@@ -336,7 +346,15 @@ public final class OvozPlayer: NSObject {
     playerObservations = []
     NotificationCenter.default.removeObserver(self)
     OvozSessionManager.shared.unregister(self)
+    OvozNetworkMonitor.shared.unregister(self)
     listener = nil
+  }
+
+  // MARK: Used by the network monitor
+
+  func networkChanged(available: Bool) {
+    guard !disposed else { return }
+    listener?.onNetworkChanged(available)
   }
 
   // MARK: Used by the session manager
@@ -492,13 +510,19 @@ public final class OvozPlayer: NSObject {
 
   private func fail(_ item: LoadedItem, error: OvozError) {
     guard !item.failed else { return }
+    // Captured before the pending start is dropped: a load that failed on its
+    // way to minute 25 is resumed at minute 25.
+    item.failedAt = item.pendingStart ?? item.playerItem.currentTime()
     item.failed = true
     item.pendingStart = nil
+    // The error goes first. Stopping playback below makes the
+    // timeControlStatus observer report the state there and then, and Dart
+    // must hear of the failure while playback was still wanted.
+    listener?.onError(item.id, code: error.code.rawValue, message: error.message)
     playWhenReady = false
     dropNext()
     updateActionAtItemEnd()
     syncPlayback()
-    listener?.onError(item.id, code: error.code.rawValue, message: error.message)
     emitState()
     updateNowPlaying()
   }

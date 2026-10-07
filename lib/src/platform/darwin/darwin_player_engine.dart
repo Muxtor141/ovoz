@@ -33,6 +33,7 @@ final class DarwinPlayerEngine implements PlayerEngine {
         ),
       ),
       onRemoteCommand_value_: (command, value) => _emit(EngineMediaCommand(_commandEvent(command, value))),
+      onNetworkChanged_: (available) => _emit(EngineNetworkChanged(available: available)),
       $keepIsolateAlive: false,
     );
     _player = OvozPlayer.alloc().initWithListener(listener);
@@ -131,6 +132,9 @@ final class DarwinPlayerEngine implements PlayerEngine {
 
   @override
   bool get playing => _player.isPlaying;
+
+  @override
+  bool get networkAvailable => _player.isNetworkAvailable;
 
   @override
   void dispose() {

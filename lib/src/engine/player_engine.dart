@@ -59,6 +59,10 @@ abstract interface class PlayerEngine {
   ProcessingState get processingState;
   bool get playing;
 
+  /// Whether the device has a network, as last reported; changes arrive as
+  /// [EngineNetworkChanged].
+  bool get networkAvailable;
+
   /// Releases the native player. The engine cannot be used again.
   void dispose();
 }
@@ -121,6 +125,9 @@ final class EngineDurationChanged extends EngineEvent {
   String toString() => 'EngineDurationChanged($itemId, $duration)';
 }
 
+/// Item [itemId] could not load, or stopped playing. For the current item it
+/// comes before the state the failure causes (idle, playback no longer
+/// wanted), so the player still knows whether playback was wanted.
 final class EngineItemFailed extends EngineEvent {
   const EngineItemFailed(this.itemId, this.error);
 
@@ -139,4 +146,16 @@ final class EngineMediaCommand extends EngineEvent {
 
   @override
   String toString() => 'EngineMediaCommand($event)';
+}
+
+/// The network came back, went away, or moved to another interface (Wi-Fi to
+/// cellular).
+final class EngineNetworkChanged extends EngineEvent {
+  const EngineNetworkChanged({required this.available});
+
+  /// Whether there is a network now.
+  final bool available;
+
+  @override
+  String toString() => 'EngineNetworkChanged(available: $available)';
 }

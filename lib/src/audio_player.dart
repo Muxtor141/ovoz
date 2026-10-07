@@ -62,6 +62,12 @@ class AudioPlayer {
   bool _currentFailed = false;
   Duration _resumePosition = Duration.zero;
 
+  /// The current item's connection failed while audio was wanted, under a
+  /// [StallPolicy]: it waits to be loaded again at [_resumePosition] instead
+  /// of failing. The engine's item is dead meanwhile, so the player reports
+  /// its own state: still playing, buffering.
+  bool _recovering = false;
+
   /// Cued entries that failed to load, skipped over when cueing.
   final _unplayable = <QueueEntry>{};
   int _consecutiveErrors = 0;
@@ -75,6 +81,11 @@ class AudioPlayer {
   StallPolicy? _stallPolicy;
   Timer? _reconnectTimer;
   Timer? _giveUpTimer;
+  Timer? _retryTimer;
+
+  /// The network changed since the engine opened its connections, so the
+  /// next wait reconnects at once rather than wait on them.
+  bool _connectionsStale = false;
 
   // ── Observable state ─────────────────────────────────────────────────
 
@@ -94,12 +105,13 @@ class AudioPlayer {
   /// Read from the engine on every call (D-07).
   Duration get position {
     if (_current == null) return Duration.zero;
-    if (_stopped || _currentFailed) return _resumePosition;
+    if (_stopped || _currentFailed || _recovering) return _resumePosition;
     return _engine.position;
   }
 
-  Duration get bufferedPosition =>
-      _current == null || _stopped || _currentFailed ? Duration.zero : _engine.bufferedPosition;
+  Duration get bufferedPosition => _current == null || _stopped || _currentFailed || _recovering
+      ? Duration.zero
+      : _engine.bufferedPosition;
 
   /// The current item's length: the metadata's until the engine measures it.
   /// Null while unknown and for live streams.
@@ -194,6 +206,13 @@ class AudioPlayer {
   Future<void> play() async {
     _checkNotDisposed();
     final current = _current;
+    if (current != null && _recovering) {
+      // Wanted again: loaded at once if there is a network to load it over.
+      _state.value = const PlayerState(true, ProcessingState.buffering);
+      if (_engine.networkAvailable) _reconnectStalled();
+      _restartStallClock();
+      return;
+    }
     if (current != null && (_stopped || _currentFailed)) {
       _load(current.entry, _resumePosition).ignore();
     }
@@ -202,6 +221,16 @@ class AudioPlayer {
 
   Future<void> pause() async {
     _checkNotDisposed();
+    if (_recovering) {
+      // Nothing to pause in the engine: the player stops waiting to resume.
+      _cancelRetry();
+      _state.value = PlayerState(
+        false,
+        _pendingLoad == null ? ProcessingState.idle : ProcessingState.loading,
+      );
+      _watchForStall();
+      return;
+    }
     _engine.pause();
   }
 
@@ -217,6 +246,7 @@ class AudioPlayer {
     _cued = null;
     _stopStallClock();
     _engine.stop();
+    _leaveRecovery();
     _pollPositions();
   }
 
@@ -227,7 +257,7 @@ class AudioPlayer {
     if (index != null) {
       final entry = _queue.entryAt(index);
       if (entry == null) throw RangeError.index(index, queue, 'index');
-      if (entry != _current?.entry || _stopped || _currentFailed) {
+      if (entry != _current?.entry || _stopped || _currentFailed || _recovering) {
         _consecutiveErrors = 0;
         _unplayable.remove(entry);
         _load(entry, target).ignore();
@@ -235,7 +265,7 @@ class AudioPlayer {
       }
     }
     if (_current == null) return;
-    if (_stopped || _currentFailed) {
+    if (_stopped || _currentFailed || _recovering) {
       _resumePosition = target;
       _pollPositions();
       return;
@@ -437,6 +467,7 @@ class AudioPlayer {
     _disposed = true;
     _pendingLoad?.interrupt();
     _stopStallClock();
+    _cancelRetry();
     await _subscription.cancel();
     _engine.dispose();
     _positions.close();
@@ -459,6 +490,8 @@ class AudioPlayer {
     _duration.value = entry.source.metadata?.duration;
     final pending = _pendingLoad = _PendingLoad(instance.id);
     _engine.setItem(EngineItem(instance.id, entry.source), position);
+    _connectionsStale = false;
+    _leaveRecovery();
     _queueChanged();
     _pollPositions();
     _restartStallClock();
@@ -490,6 +523,7 @@ class AudioPlayer {
     _duration.value = null;
     _stopStallClock();
     _engine.setItem(null, Duration.zero);
+    _leaveRecovery();
     _pollPositions();
   }
 
@@ -509,7 +543,7 @@ class AudioPlayer {
 
   QueueEntry? _wantedCue() {
     final current = _current;
-    if (current == null || _stopped || _currentFailed) return null;
+    if (current == null || _stopped || _currentFailed || _recovering) return null;
     var want = _queue.after(current.entry, automatic: true);
     for (var skips = 0; want != null && _unplayable.contains(want); skips++) {
       if (skips >= options.maxSkipsOnError) return null;
@@ -552,11 +586,17 @@ class AudioPlayer {
         _onItemFailed(itemId, error);
       case EngineMediaCommand(:final event):
         _onMediaCommand(event);
+      case EngineNetworkChanged(:final available):
+        _onNetworkChanged(available);
     }
   }
 
   void _onState(ProcessingState state, bool playing) {
-    _state.value = PlayerState(playing, state);
+    // The engine reports on the dead item; the player speaks for itself.
+    if (_recovering) return;
+    // A failed item the player gave up on can stay in the engine, paused and
+    // still loading; to the app it is idle, waiting for [play].
+    _state.value = PlayerState(playing, _currentFailed ? ProcessingState.idle : state);
     final pending = _pendingLoad;
     if (pending != null &&
         _engine.currentItemId == pending.id &&
@@ -595,8 +635,24 @@ class AudioPlayer {
     );
   }
 
+  void _onItemFailed(int itemId, AudioError error) {
+    // Already failed, by the player giving up on it: the engine's own verdict,
+    // arriving later, is old news.
+    if (itemId == _current?.id && _currentFailed) return;
+    // Under a stall policy a lost connection is a wait: the item is loaded
+    // again when the network allows, and fails only if that never comes.
+    if (itemId == _current?.id &&
+        _stallPolicy != null &&
+        error.kind == AudioErrorKind.network &&
+        _wantsAudio) {
+      _holdForNetwork(_engine.position);
+      return;
+    }
+    _fail(itemId, error);
+  }
+
   /// [position] is where the item failed, when the engine no longer holds it.
-  void _onItemFailed(int itemId, AudioError error, {Duration? position}) {
+  void _fail(int itemId, AudioError error, {Duration? position}) {
     final entry = _recent[itemId];
     if (entry == null) return;
     final pending = _pendingLoad;
@@ -660,10 +716,12 @@ class AudioPlayer {
   /// Starts timing when a wait begins, and stops when audio plays or nobody
   /// waits any more. A wait already being timed goes on. Idle neither starts
   /// nor ends one: the engine reports it for a moment whenever it replaces
-  /// an item, a reconnect's included.
+  /// an item, a reconnect's included. Nothing is timed without a network:
+  /// there is nothing to reconnect to, and giving up would only stop what
+  /// the network's return resumes.
   void _watchForStall() {
     final policy = _stallPolicy;
-    if (policy == null || !_wantsAudio) {
+    if (policy == null || !_wantsAudio || !_engine.networkAvailable) {
       _stopStallClock();
       return;
     }
@@ -674,12 +732,78 @@ class AudioPlayer {
         break;
       case ProcessingState.loading || ProcessingState.buffering:
         if (_giveUpTimer != null) return;
+        // The network changed under the engine's connections: no use waiting
+        // on them.
+        if (_connectionsStale && !_recovering) _reconnectStalled();
         final reconnectAfter = policy.reconnectAfter;
         if (reconnectAfter != null && reconnectAfter < policy.giveUpAfter) {
           _reconnectTimer = Timer(reconnectAfter, _reconnectStalled);
         }
         _giveUpTimer = Timer(policy.giveUpAfter, _giveUpStalled);
     }
+  }
+
+  /// The network came back, went away, or moved to another interface.
+  void _onNetworkChanged(bool available) {
+    if (_stallPolicy == null) return;
+    if (!available) {
+      _cancelRetry();
+      _stopStallClock();
+      return;
+    }
+    // The engine's connections may be dead: a wait loads the item again now,
+    // anything else does at its next wait.
+    final state = _state.value.processingState;
+    if (_wantsAudio &&
+        (_recovering || state == ProcessingState.loading || state == ProcessingState.buffering)) {
+      _reconnectStalled();
+    } else {
+      _connectionsStale = true;
+    }
+    _restartStallClock();
+  }
+
+  /// Keeps the current item, whose connection failed, waiting to be loaded
+  /// again at [position]: retried shortly while there is a network, at once
+  /// when one comes back, and given up on only after the policy's limit.
+  void _holdForNetwork(Duration position) {
+    _recovering = true;
+    _resumePosition = position;
+    _cued = null;
+    _state.value = PlayerState(
+      _state.value.playing,
+      _pendingLoad == null ? ProcessingState.buffering : ProcessingState.loading,
+    );
+    _pollPositions();
+    final reconnectAfter = _stallPolicy?.reconnectAfter;
+    if (_engine.networkAvailable) {
+      final rest = reconnectAfter != null && reconnectAfter < _maxRetryDelay
+          ? reconnectAfter
+          : _maxRetryDelay;
+      _retryTimer ??= Timer(rest, () {
+        _retryTimer = null;
+        if (_recovering && _wantsAudio && _engine.networkAvailable) _reconnectStalled();
+      });
+    }
+    _watchForStall();
+  }
+
+  /// The longest a failed connection rests before it is tried again; less
+  /// when the policy reconnects sooner.
+  static const _maxRetryDelay = Duration(seconds: 2);
+
+  void _cancelRetry() {
+    _retryTimer?.cancel();
+    _retryTimer = null;
+  }
+
+  /// Ends a hold without loading the item again, and reports the engine's
+  /// state once more.
+  void _leaveRecovery() {
+    if (!_recovering) return;
+    _recovering = false;
+    _cancelRetry();
+    _state.value = PlayerState(_engine.playing, _engine.processingState);
   }
 
   /// Times a wait from now: one for a new item, or under a new policy.
@@ -697,24 +821,32 @@ class AudioPlayer {
 
   /// Loads the waiting item again where it is, so that it reads over new
   /// connections. The wait goes on being timed, and a [setSource] waiting for
-  /// the item waits for the new attempt instead.
+  /// the item waits for the new attempt instead. One reconnect at a time: a
+  /// retry, the network's return or the clock, whichever comes first.
   void _reconnectStalled() {
+    _reconnectTimer?.cancel();
     _reconnectTimer = null;
     final stalled = _current;
     if (stalled == null || !_wantsAudio) return;
-    final position = _engine.position;
+    final position = _recovering ? _resumePosition : _engine.position;
+    _connectionsStale = false;
     final instance = _instance(stalled.entry);
     _current = instance;
     _cued = null;
     final pending = _pendingLoad;
     if (pending != null && pending.id == stalled.id) pending.id = instance.id;
+    // A failed item made the engine stop wanting playback; the player did
+    // not. Wanted again before the new item goes in, so that the engine never
+    // reports it loading but not wanted, which would end the wait.
+    if (_recovering && _state.value.playing) _engine.play();
     _engine.setItem(EngineItem(instance.id, stalled.entry.source), position);
+    _leaveRecovery();
     _queueChanged();
     _pollPositions();
   }
 
-  /// Fails the waiting item the way the engine fails one: idle where it was,
-  /// for [play] to try again.
+  /// Fails the waiting item the way the engine fails one: paused where it
+  /// was, still current (on the lock screen too), for [play] to load again.
   void _giveUpStalled() {
     _giveUpTimer = null;
     _reconnectTimer?.cancel();
@@ -722,13 +854,17 @@ class AudioPlayer {
     final stalled = _current;
     final policy = _stallPolicy;
     if (stalled == null || policy == null || !_wantsAudio) return;
-    final position = _engine.position;
-    _engine.stop();
-    _onItemFailed(
+    final position = _recovering ? _resumePosition : _engine.position;
+    // Paused, not stopped: stopping empties the engine, which takes the item
+    // off the lock screen as if it had never been there.
+    _engine.pause();
+    // Failed while still recovering: the failure reads whether it was playing.
+    _fail(
       stalled.id,
       AudioError(AudioErrorKind.network, 'No audio after waiting ${policy.giveUpAfter.inMilliseconds} ms'),
       position: position,
     );
+    _leaveRecovery();
   }
 
   /// SES-08 and BG-06, in debug builds: background playback needs the audio

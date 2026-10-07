@@ -7,7 +7,8 @@ import 'package:ovoz/src/player_state.dart';
 
 /// A [PlayerEngine] that plays nothing and behaves like the native one: the
 /// same events, in the same order. Tests drive time with [completeLoad],
-/// [finishItem], [startBuffering], [failCurrent] and friends.
+/// [finishItem], [startBuffering], [failCurrent], [changeNetwork] and
+/// friends.
 ///
 /// Events are delivered asynchronously, as the native engine's are; let them
 /// arrive (`await pumpEventQueue()`) before checking the player.
@@ -41,6 +42,7 @@ class FakePlayerEngine implements PlayerEngine {
   MediaControls? mediaControls;
   (int index, int count)? queuePosition;
   bool disposed = false;
+  bool _networkAvailable = true;
 
   final _events = StreamController<EngineEvent>.broadcast();
 
@@ -48,6 +50,13 @@ class FakePlayerEngine implements PlayerEngine {
   Stream<EngineEvent> get events => _events.stream;
 
   // ── Driving it ───────────────────────────────────────────────────────
+
+  /// The network goes away, comes back, or moves to another interface
+  /// (Wi-Fi to cellular: available before and after).
+  void changeNetwork({required bool available}) {
+    _networkAvailable = available;
+    _emit(EngineNetworkChanged(available: available));
+  }
 
   /// The current item finished loading, [duration] long.
   void completeLoad([Duration? duration]) {
@@ -207,6 +216,9 @@ class FakePlayerEngine implements PlayerEngine {
 
   @override
   bool get playing => _playing;
+
+  @override
+  bool get networkAvailable => _networkAvailable;
 
   @override
   void dispose() {

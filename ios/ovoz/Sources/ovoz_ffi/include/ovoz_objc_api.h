@@ -446,6 +446,9 @@ SWIFT_CLASS_NAMED("OvozPlayer")
 @property (nonatomic, readonly) int64_t currentItemId;
 @property (nonatomic, readonly) NSInteger processingState;
 @property (nonatomic, readonly) BOOL isPlaying;
+/// Whether the device has a network, as last reported; true until the
+/// first report.
+@property (nonatomic, readonly) BOOL isNetworkAvailable;
 /// Makes this player the one the lock screen, Control Center, headsets and
 /// cars control (BG-02: at most one player at a time; this takes over from
 /// any other). [commands] is a bit set of [OvozRemoteCommand] raw values.
@@ -482,6 +485,9 @@ SWIFT_PROTOCOL_NAMED("OvozPlayerListener")
 /// media controls. [command] is an [OvozRemoteCommand]; [value] carries the
 /// position or interval in milliseconds, or the rate.
 - (void)onRemoteCommand:(NSInteger)command value:(double)value;
+/// The network came back, went away, or moved to another interface (Wi-Fi
+/// to cellular): [available] is whether there is one now.
+- (void)onNetworkChanged:(BOOL)available;
 @end
 
 /// Processing states; the raw values are shared with Dart’s <code>ProcessingState</code>.

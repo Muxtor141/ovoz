@@ -308,10 +308,16 @@ void main() {
 
       await wait(500);
       expect(events.single, isA<ItemFailed>().having((e) => e.error.kind, 'kind', AudioErrorKind.network));
-      expect(engine.log.last, 'stop');
+      expect(engine.log.last, 'pause', reason: 'paused, not stopped: the item stays, on the lock screen too');
+      expect(engine.currentItem, isNotNull);
       expect(player.playing, isFalse);
       expect(player.processingState, ProcessingState.idle);
       expect(player.position, const Duration(seconds: 7));
+
+      // The engine's own verdict on the item, arriving late, is not news.
+      engine.failCurrent();
+      await pumpEventQueue();
+      expect(events, hasLength(1));
 
       engine.log.clear();
       await player.play();
@@ -349,6 +355,98 @@ void main() {
 
       expect(engine.log, ['pause']);
       expect(events, isEmpty);
+    });
+
+    Future<void> playingAt(Duration position) async {
+      build(options: const PlayerOptions(stallPolicy: policy), autoLoad: false);
+      final load = player.setSource(chapters(1).single);
+      engine.completeLoad();
+      await load;
+      await player.play();
+      engine.position = position;
+      await pumpEventQueue();
+      engine.log.clear();
+    }
+
+    const offline = AudioError(AudioErrorKind.network, 'offline');
+
+    test('offline, a wait is not timed; the network coming back loads the item again at once', () async {
+      await playingAt(const Duration(seconds: 7));
+      engine.changeNetwork(available: false);
+      engine.startBuffering();
+      await wait(700);
+      expect(engine.log, isEmpty, reason: 'no reconnect and no giving up without a network');
+      expect(events, isEmpty);
+      expect(player.playing, isTrue);
+
+      engine.changeNetwork(available: true);
+      await pumpEventQueue();
+      expect(engine.log, ['setItem(2, 7000)']);
+    });
+
+    test('a lost connection waits for the network instead of failing, then plays on', () async {
+      await playingAt(const Duration(seconds: 9));
+      engine.changeNetwork(available: false);
+      engine.failCurrent(offline);
+      await wait(700);
+
+      expect(events, isEmpty, reason: 'a wait, not a failure');
+      expect(player.playing, isTrue);
+      expect(player.processingState, ProcessingState.buffering);
+      expect(player.position, const Duration(seconds: 9));
+      expect(engine.log, isEmpty);
+
+      engine.changeNetwork(available: true);
+      await pumpEventQueue();
+      expect(engine.log, ['play', 'setItem(2, 9000)']);
+      engine.completeLoad();
+      await pumpEventQueue();
+      expect(player.processingState, ProcessingState.ready);
+      expect(player.playing, isTrue);
+      expect(events, isEmpty);
+    });
+
+    test('a lost connection with a network is tried again, and given up on at the limit', () async {
+      await playingAt(const Duration(seconds: 9));
+      engine.failCurrent(offline);
+      await wait(250);
+      expect(engine.log, ['play', 'setItem(2, 9000)']);
+      expect(events, isEmpty);
+
+      engine.failCurrent(offline);
+      await wait(600);
+      expect(events.single, isA<ItemFailed>().having((e) => e.error.kind, 'kind', AudioErrorKind.network));
+      expect(player.playing, isFalse);
+      expect(player.processingState, ProcessingState.idle);
+      expect(player.position, const Duration(seconds: 9));
+    });
+
+    test('after a network switch, the next wait loads the item again at once', () async {
+      await playingAt(const Duration(seconds: 5));
+      engine.changeNetwork(available: true);
+      await pumpEventQueue();
+      expect(engine.log, isEmpty, reason: 'audio still plays: nothing to do yet');
+
+      engine.startBuffering();
+      await wait(50);
+      expect(engine.log, ['setItem(2, 5000)']);
+    });
+
+    test('paused while it waits for the network, it waits no more; play loads it again', () async {
+      await playingAt(const Duration(seconds: 9));
+      engine.changeNetwork(available: false);
+      engine.failCurrent(offline);
+      await pumpEventQueue();
+      await player.pause();
+      expect(player.playing, isFalse);
+
+      engine.changeNetwork(available: true);
+      await wait(300);
+      expect(engine.log, isEmpty);
+
+      await player.play();
+      expect(engine.log, ['play', 'setItem(2, 9000)']);
+      expect(player.playing, isTrue);
     });
   });
 

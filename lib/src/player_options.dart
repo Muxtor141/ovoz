@@ -36,24 +36,34 @@ final class PlayerOptions {
 }
 
 /// What a player does when it waits for audio it should be playing: a
-/// connection that went quiet, or a load that never finishes.
+/// connection that went quiet or dropped, a load that never finishes, the
+/// network going away or moving from Wi-Fi to cellular.
 ///
 /// A wait is time without audio, [ProcessingState.loading] or
 /// [ProcessingState.buffering], while the player is playing or a
 /// [AudioPlayer.setSource] waits for the item. It ends when audio plays or
 /// nobody waits any more (a pause, say); moving to another item starts a new
-/// one.
+/// one. Throughout, the player stays playing: a pause works as ever.
+///
+/// With a policy, a connection that fails (an [AudioErrorKind.network] error)
+/// is a wait too, not a failure: the player tries the item again shortly, or
+/// at once when the network comes back. Without a network nothing is timed,
+/// so the player never gives up on a network that is merely gone; when one
+/// comes back or the device moves to another, a waiting item is loaded again
+/// at once.
 @immutable
 final class StallPolicy {
   const StallPolicy({this.reconnectAfter, required this.giveUpAfter});
 
   /// After waiting this long, the player loads the item again where it is, so
-  /// that it reads over new connections. Once per wait; null never does.
+  /// that it reads over new connections. Once per wait (the network coming
+  /// back, or a failed connection, also reload it); null never does.
   final Duration? reconnectAfter;
 
-  /// After waiting this long in all, the player gives up: the item fails with
-  /// [AudioErrorKind.network] ([ItemFailed]) and the player is idle at its
-  /// position, as after any failure, so [AudioPlayer.play] tries again.
+  /// After waiting this long with a network, the player gives up: the item
+  /// fails with [AudioErrorKind.network] ([ItemFailed]) and the player pauses
+  /// where it was, the item still current (on the lock screen too), so
+  /// [AudioPlayer.play] loads it again from there.
   final Duration giveUpAfter;
 
   @override
