@@ -1,0 +1,104 @@
+// The ovoz engine for Android: Media3 ExoPlayer behind the same engine
+// contract as iOS. Dart calls it through jnigen bindings (package:jni); there
+// is no method channel.
+group = "uz.sayma.ovoz"
+version = "0.1.0"
+
+buildscript {
+    ext.kotlin_version = "2.2.20"
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Used only when this project is opened on its own: in an app, the
+        // app's own Android and Kotlin Gradle plugins build it.
+        classpath("com.android.tools.build:gradle:8.13.0")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+
+// Flutter 3.44+ applies the Kotlin plugin to plugins itself, and AGP 9 can
+// compile Kotlin without it ("built-in Kotlin"). Flutter 3.38 to 3.43 leave
+// it to the plugin.
+def agpMajor = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION.tokenize(".")[0].toInteger()
+def builtInKotlin = agpMajor >= 9 && findProperty("android.builtInKotlin")?.toString() != "false"
+if (!builtInKotlin && !plugins.hasPlugin("org.jetbrains.kotlin.android")) { apply plugin: "org.jetbrains.kotlin.android" }
+
+def media3Version = "1.11.1"
+
+android {
+    namespace = "uz.sayma.ovoz"
+    // Media3 1.11 needs compileSdk 36 in the app as well.
+    compileSdk = 36
+
+    defaultConfig {
+        // Media3 1.9+ needs 23; Flutter's default is 24.
+        minSdk = 23
+        consumerProguardFiles("consumer-rules.pro")
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main.java.srcDirs += "src/main/kotlin"
+        test.java.srcDirs += "src/test/kotlin"
+        androidTest.java.srcDirs += "src/androidTest/kotlin"
+        // The same vectors the iOS native tests use (tool/make_test_vectors.sh).
+        androidTest.assets.srcDirs += "../ios/native_tests/Tests/OvozLoaderTests/Fixtures"
+    }
+
+    testOptions {
+        unitTests.all {
+            // The same vectors the iOS native tests use (tool/make_test_vectors.sh).
+            systemProperty("ovoz.fixtures", file("../ios/native_tests/Tests/OvozLoaderTests/Fixtures").absolutePath)
+            testLogging {
+                events "passed", "skipped", "failed"
+                exceptionFormat "full"
+            }
+        }
+    }
+}
+
+def configureKotlin = {
+    kotlin {
+        compilerOptions {
+            // Not javaParameters: jnigen 1.0.1 copies the name Kotlin gives a
+            // property setter's parameter, `<set-?>`, into the Dart bindings.
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        }
+    }
+}
+if (builtInKotlin) {
+    configureKotlin()
+} else {
+    plugins.withId("org.jetbrains.kotlin.android") { configureKotlin() }
+}
+
+dependencies {
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    implementation("androidx.media3:media3-session:$media3Version")
+    implementation("androidx.annotation:annotation:1.9.1")
+    // Media3 only needs it at run time; the engine compiles against it.
+    implementation("androidx.core:core:1.13.1")
+
+    testImplementation("junit:junit:4.13.2")
+    // On a device or emulator: ./gradlew :ovoz:connectedDebugAndroidTest
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("junit:junit:4.13.2")
+}

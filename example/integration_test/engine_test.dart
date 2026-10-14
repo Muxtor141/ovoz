@@ -1,13 +1,17 @@
-// The real engine, end to end: Dart API -> FFI -> Swift -> AVFoundation.
+// The real engine, end to end: Dart API -> FFI -> Swift -> AVFoundation on
+// iOS, Dart API -> JNI -> Kotlin -> Media3 on Android. The same tests run on
+// both.
 //
-//   cd example && flutter test integration_test -d <simulator id>
+//   cd example && flutter test integration_test -d <simulator or emulator id>
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:objective_c/objective_c.dart' as objc;
 import 'package:ovoz/ovoz.dart';
 import 'package:ovoz_example/local_server.dart';
 
@@ -32,6 +36,87 @@ Future<void> until(bool Function() condition, {Duration timeout = const Duration
     if (DateTime.now().isAfter(deadline)) throw TimeoutException('condition not met', timeout);
     await Future<void>.delayed(const Duration(milliseconds: 50));
   }
+}
+
+/// Posts the notifications AVAudioSession posts, so that the engine hears an
+/// interruption or a route change as if the system had sent it: a test cannot
+/// make a phone call or unplug headphones. iOS only.
+///
+/// objective_c has no bindings for NSNotificationCenter, so this sends the
+/// messages through its runtime helpers (meant for ffigen bindings).
+abstract final class SystemNotifications {
+  static final _process = DynamicLibrary.process();
+
+  static final _send = objc.msgSendPointer
+      .cast<
+        NativeFunction<
+          Pointer<objc.ObjCObjectImpl> Function(Pointer<objc.ObjCObjectImpl>, Pointer<objc.ObjCSelector>)
+        >
+      >()
+      .asFunction<
+        Pointer<objc.ObjCObjectImpl> Function(Pointer<objc.ObjCObjectImpl>, Pointer<objc.ObjCSelector>)
+      >();
+
+  static final _post = objc.msgSendPointer
+      .cast<
+        NativeFunction<
+          Void Function(
+            Pointer<objc.ObjCObjectImpl>,
+            Pointer<objc.ObjCSelector>,
+            Pointer<objc.ObjCObjectImpl>,
+            Pointer<objc.ObjCObjectImpl>,
+            Pointer<objc.ObjCObjectImpl>,
+          )
+        >
+      >()
+      .asFunction<
+        void Function(
+          Pointer<objc.ObjCObjectImpl>,
+          Pointer<objc.ObjCSelector>,
+          Pointer<objc.ObjCObjectImpl>,
+          Pointer<objc.ObjCObjectImpl>,
+          Pointer<objc.ObjCObjectImpl>,
+        )
+      >();
+
+  /// Kept for as long as the tests run, so nothing is released while the
+  /// notification center still uses it.
+  static final _held = <objc.ObjCObject>[];
+
+  /// An NSString constant AVFoundation exports.
+  static objc.ObjCObject _constant(String name) => objc.ObjCObject(
+    _process.lookup<Pointer<objc.ObjCObjectImpl>>(name).value,
+    retain: true,
+    release: true,
+  );
+
+  static void _postFromSession(String name, Map<Object, Object> info) {
+    final center = _send(objc.getClass('NSNotificationCenter'), objc.registerName('defaultCenter'));
+    final session = _send(objc.getClass('AVAudioSession'), objc.registerName('sharedInstance'));
+    final notification = _constant(name);
+    final userInfo = objc.toObjCObject(info);
+    _held.addAll([notification, userInfo]);
+    _post(
+      center,
+      objc.registerName('postNotificationName:object:userInfo:'),
+      notification.ref.pointer,
+      session,
+      userInfo.ref.pointer,
+    );
+  }
+
+  /// AVAudioSessionInterruptionTypeBegan is 1, Ended 0; the shouldResume
+  /// option is 1.
+  static void interruption({required bool began, bool shouldResume = false}) =>
+      _postFromSession('AVAudioSessionInterruptionNotification', {
+        _constant('AVAudioSessionInterruptionTypeKey'): began ? 1 : 0,
+        if (!began) _constant('AVAudioSessionInterruptionOptionKey'): shouldResume ? 1 : 0,
+      });
+
+  /// [rawReason] is an AVAudioSession.RouteChangeReason raw value.
+  static void routeChange(int rawReason) => _postFromSession('AVAudioSessionRouteChangeNotification', {
+    _constant('AVAudioSessionRouteChangeReasonKey'): rawReason,
+  });
 }
 
 Matcher closeToDuration(Duration expected, Duration tolerance) => predicate<Duration?>(
@@ -115,6 +200,18 @@ void main() {
     await until(() => player.currentIndex == 1);
     await until(() => !player.playing);
     expect(player.position, lessThan(const Duration(milliseconds: 200)));
+    expect(events.whereType<ItemCompleted>(), hasLength(1));
+  });
+
+  testWidgets('an item added after the queue completed plays at once, as if the queue went on', (_) async {
+    await player.setSource(AudioSource.asset('assets/audio/song_a.m4a', tag: 'a'));
+    await player.seek(const Duration(milliseconds: 19300));
+    await player.play();
+    await until(() => player.processingState == ProcessingState.completed);
+    await player.add(AudioSource.asset('assets/audio/song_b.m4a', tag: 'b'));
+    await until(() => player.currentIndex == 1 && player.position > const Duration(milliseconds: 300));
+    expect(player.currentSource!.tag, 'b');
+    expect(player.playing, isTrue);
     expect(events.whereType<ItemCompleted>(), hasLength(1));
   });
 
@@ -214,6 +311,52 @@ void main() {
           player.position > const Duration(milliseconds: 500),
     );
     expect(bed.playing && player.playing, isTrue);
+  });
+
+  group('the session, hearing what the system posts', () {
+    testWidgets('route changes reach Dart with their own reason', (_) async {
+      final reasons = <AudioRouteChangeReason>[];
+      final subscription = AudioSession.instance.routeChanges.listen((change) => reasons.add(change.reason));
+      addTearDown(subscription.cancel);
+      // Apple's raw values skip 5.
+      for (final raw in [1, 3, 4, 6, 7, 8]) {
+        SystemNotifications.routeChange(raw);
+      }
+      await until(() => reasons.length == 6);
+      expect(reasons, [
+        AudioRouteChangeReason.newDeviceAvailable,
+        AudioRouteChangeReason.categoryChange,
+        AudioRouteChangeReason.override,
+        AudioRouteChangeReason.wakeFromSleep,
+        AudioRouteChangeReason.noSuitableRouteForCategory,
+        AudioRouteChangeReason.routeConfigurationChange,
+      ]);
+    }, skip: !Platform.isIOS);
+
+    testWidgets('an interruption pauses a playing player, and its end resumes it', (_) async {
+      await player.setSource(AudioSource.asset('assets/audio/song_a.m4a'));
+      await player.play();
+      await until(() => player.position > const Duration(milliseconds: 300));
+      SystemNotifications.interruption(began: true);
+      await until(() => !player.playing);
+      SystemNotifications.interruption(began: false, shouldResume: true);
+      await until(() => player.playing);
+      final resumedAt = player.position;
+      await until(() => player.position > resumedAt + const Duration(milliseconds: 300));
+    }, skip: !Platform.isIOS);
+
+    testWidgets('a queue that has ended stays ended through an interruption', (_) async {
+      await player.setSource(AudioSource.asset('assets/audio/song_a.m4a'));
+      await player.seek(const Duration(milliseconds: 19300));
+      await player.play();
+      await until(() => player.processingState == ProcessingState.completed);
+      SystemNotifications.interruption(began: true);
+      SystemNotifications.interruption(began: false, shouldResume: true);
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      expect(player.processingState, ProcessingState.completed, reason: 'the ended item is not replayed');
+      expect(player.position, greaterThan(const Duration(seconds: 19)));
+      expect(events.whereType<ItemCompleted>(), hasLength(1));
+    }, skip: !Platform.isIOS);
   });
 
   group('streaming, against a server inside the app', () {

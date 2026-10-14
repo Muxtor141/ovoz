@@ -23,6 +23,10 @@ export 'src/queue/play_queue.dart' show QueueState;
 export 'src/session/audio_session.dart' show AudioSession;
 export 'src/session/audio_session_config.dart'
     show
+        AndroidAudioConfig,
+        AndroidAudioContentType,
+        AndroidAudioFocus,
+        AndroidAudioUsage,
         AudioSessionConfig,
         InterruptionPolicy,
         RouteSharingPolicy,

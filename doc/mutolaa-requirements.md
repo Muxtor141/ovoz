@@ -43,7 +43,7 @@ Legend: ✅ done and tested · ◐ partly · ➖ app's job, not the player's ·
 | Spoken-audio session | `AudioSession.configure(speech())` | `AudioSessionConfig.speech()`: the same playback + spokenAudio | ✅ |
 | Lock screen: title, cover URL, duration; previous, play/pause, stop, next; scrubbing | `MediaSessionBridge` (audio_service) | `MediaMetadata` per source + `MediaControls(commands: …)`; commands come back through the player, so app rules apply to them | ✅ data and commands checked in MediaRemote on the simulator; buttons need a device check |
 | Queue shown to the system | `showQueue` | "3 of 12" (index and count); no browsable queue | ◐ |
-| Android notification channel, foreground service | `AudioServiceConfig` | Android engine | ⏳ |
+| Android notification channel, foreground service | `AudioServiceConfig` | `OvozPlaybackService` (Media3's session service), declared in the app's manifest; its notification follows the player that owns `MediaControls`; app icon from the drawable `ovoz_notification_icon` | ✅ on an emulator; a device check pending |
 
 ## 2. Quote editor clips (`ClipPlayer`, two at once)
 
@@ -58,7 +58,7 @@ Legend: ✅ done and tested · ◐ partly · ➖ app's job, not the player's ·
 | A newer load aborts the one in flight, which throws | bed | `LoadInterruptedException` | ✅ |
 | Loop a range of a track (audition) | Dart seeks back at `end − 50 ms` ("no platform player loops a range") | `ClipRange(start, end)` + `LoopMode.one`: looped natively | ✅ new |
 | Formats: mp3, m4a, aac, wav, aiff, caf, flac | device audio picker | all of these through AVFoundation | ✅ |
-| Formats: ogg, opus | device audio picker | not decodable by AVFoundation (Opus only inside CAF) | ◐ |
+| Formats: ogg, opus | device audio picker | decoded on Android (Media3); not by AVFoundation on iOS (Opus only inside CAF) | ◐ |
 
 ## 3. Things ovoz makes unnecessary
 
@@ -68,15 +68,33 @@ Legend: ✅ done and tested · ◐ partly · ➖ app's job, not the player's ·
 | `discardCache` / `clearCacheFor` | the proxy cached **decrypted** audio on disk; a deleted download stayed playable | 🗑 Nothing decrypted is ever written to disk |
 | Dart decryption isolate, throttled chunking (heat) | decryption in Dart, on the CPU | 🗑 Native AES (hardware-accelerated CommonCrypto) |
 | `usesCleartextTraffic` / ATS for the loopback proxy | the proxy was plain HTTP | 🗑 |
-| `AudioServiceCustom`, `audio_service` handler on iOS | lock-screen integration | 🗑 on iOS (`MediaControls`); stays on Android until ⏳ |
+| `AudioServiceCustom`, `audio_service` handler | lock-screen integration | 🗑 (`MediaControls`), on Android too once the app switches there |
 
 ## 4. How Mutolaa can adopt it
 
 The engine already hides its player behind `PlayerBackend`
 (`lib/src/engine/player_backend.dart`), so ovoz goes in as one new class,
 `OvozBackend implements PlayerBackend`, chosen on iOS in `AudioEngine`. Android
-keeps `JustAudioBackend` + `MediaSessionBridge` until ovoz has its Android
-engine. Nothing in the app changes.
+keeps `JustAudioBackend` + `MediaSessionBridge` until it switches too; the
+Android engine is there since 0.1.0-dev.5. Nothing in the app changes.
+
+Switching Android over is the same backend, chosen on both platforms, plus
+the app's declarations:
+
+- The manifest declares `OvozPlaybackService` with `foregroundServiceType`
+  `mediaPlayback` (README, "Setup"); the foreground-service permissions are
+  already there for audio_service. audio_service's own service and media
+  button receiver go when audio_service goes.
+- `MainActivity` extends audio_service's `AudioServiceActivity`, whose cached
+  Flutter engine outlives the activity. Keep an engine that does (a cached
+  `FlutterEngine`) when audio_service goes: ovoz stops its players when the
+  last engine ends, so without it playback would stop when the app is swiped
+  away.
+- While both backends are in the app, both ExoPlayer (the just_audio fork's)
+  and Media3 ship in the APK; they live in different packages and do not
+  clash. Removing just_audio removes the first.
+- The build needs `compileSdk` 36 and `minSdk` 23; Mutolaa's AGP 8.13,
+  Kotlin 2.2.20 and Gradle 8.14.3 build the plugin (checked).
 
 | `PlayerBackend` | `OvozBackend` |
 |---|---|
@@ -129,5 +147,5 @@ ovoz's queue (`setQueue` + `skipToIndex`, gapless auto-advance, native
    instead of next/previous when both are enabled.
 4. **Keys:** ovoz takes keys per source and never stores them; fetching and
    keeping them stays the app's job.
-5. **Android:** Media3 through jnigen (the plan) or through Pigeon — see
-   `architecture.md`, "Next".
+5. **Android:** answered on 2026-10-08: Media3 1.11 ExoPlayer through jnigen
+   (`architecture.md`, D-19 and D-20).

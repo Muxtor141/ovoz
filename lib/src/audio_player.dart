@@ -867,18 +867,25 @@ class AudioPlayer {
     _leaveRecovery();
   }
 
-  /// SES-08 and BG-06, in debug builds: background playback needs the audio
-  /// background mode and a session category that plays in the background.
+  /// SES-08 and BG-06, in debug builds: background playback needs the app's
+  /// declarations (D-16) and, on iOS, a session category that plays in the
+  /// background.
   bool _checkBackgroundSetup() {
     try {
       final session = AudioSession.instance;
+      final android = defaultTargetPlatform == TargetPlatform.android;
       if (!session.hasAudioBackgroundMode) {
         debugPrint(
-          'ovoz: media controls are enabled but Info.plist lacks the "audio" '
-          'UIBackgroundModes entry; playback will stop when the app goes to the background.',
+          android
+              ? 'ovoz: media controls are enabled but AndroidManifest.xml does not declare '
+                    'OvozPlaybackService (foregroundServiceType "mediaPlayback") with the '
+                    'FOREGROUND_SERVICE and FOREGROUND_SERVICE_MEDIA_PLAYBACK permissions; there is '
+                    'no media notification, and playback will stop when the app goes to the background.'
+              : 'ovoz: media controls are enabled but Info.plist lacks the "audio" '
+                    'UIBackgroundModes entry; playback will stop when the app goes to the background.',
         );
       }
-      if (!session.config.supportsBackground) {
+      if (!android && !session.config.supportsBackground) {
         debugPrint(
           'ovoz: media controls are enabled with a ${session.config.category.name} '
           'audio session, which does not play in the background.',

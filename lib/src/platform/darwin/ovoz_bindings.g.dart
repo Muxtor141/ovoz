@@ -3611,7 +3611,7 @@ extension OvozSessionListener$Methods on OvozSessionListener {
     _objc_msgSend_1pl9qdv(_$$ref.pointer, _sel_onMediaServicesReset);
   }
 
-  /// [reason] is an <code>AVAudioSession.RouteChangeReason</code> raw value.
+  /// [reason] is a Dart <code>AudioRouteChangeReason</code> index.
   void onRouteChanged(int reason) {
     final _$$ref = object$.ref;
     _objc_msgSend_4sp4xj(_$$ref.pointer, _sel_onRouteChanged_, reason);
@@ -3930,7 +3930,7 @@ interface class OvozSessionListener$Builder {
         ),
       );
 
-  /// [reason] is an <code>AVAudioSession.RouteChangeReason</code> raw value.
+  /// [reason] is a Dart <code>AudioRouteChangeReason</code> index.
   static final onRouteChanged_ =
       objc.ObjCProtocolListenableMethod<void Function(int)>(
         _protocol_OvozSessionListener,

@@ -17,6 +17,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # integration_test/engine_test.dart: posts AVAudioSession's notifications.
+  objective_c: ^9.5.0
 
 flutter:
   # Like the Mutolaa app: CocoaPods, not Swift Package Manager.

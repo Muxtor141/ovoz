@@ -1,0 +1,5 @@
+<!-- The tests' range server speaks plain HTTP on the loopback interface. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <application android:usesCleartextTraffic="true"/>
+</manifest>

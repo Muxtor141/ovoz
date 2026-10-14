@@ -1,0 +1,7 @@
+<!-- The engine watches the network (NetworkMonitor). Media3 adds
+     ACCESS_NETWORK_STATE and WAKE_LOCK as well. The app declares
+     OvozPlaybackService and the foreground-service permissions itself (D-16);
+     see the README. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+</manifest>

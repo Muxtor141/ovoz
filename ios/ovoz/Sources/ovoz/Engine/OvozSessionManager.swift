@@ -178,7 +178,23 @@ final class OvozSessionManager {
         }
         listener?.onBecomingNoisy()
       }
-      listener?.onRouteChanged(Int(reason.rawValue))
+      listener?.onRouteChanged(Self.dartIndex(of: reason))
+    }
+  }
+
+  /// The reason's index in Dart's `AudioRouteChangeReason`, whose order is
+  /// part of the platform contract. Not the raw value: Apple's values skip 5.
+  private static func dartIndex(of reason: AVAudioSession.RouteChangeReason) -> Int {
+    switch reason {
+    case .unknown: return 0
+    case .newDeviceAvailable: return 1
+    case .oldDeviceUnavailable: return 2
+    case .categoryChange: return 3
+    case .override: return 4
+    case .wakeFromSleep: return 5
+    case .noSuitableRouteForCategory: return 6
+    case .routeConfigurationChange: return 7
+    @unknown default: return 0
     }
   }
 

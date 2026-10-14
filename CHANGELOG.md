@@ -1,3 +1,38 @@
+## 0.1.0-dev.5
+
+- Android, behind the same API: a Kotlin engine on Media3 1.11 ExoPlayer,
+  called from Dart through jnigen bindings (synchronous calls on the platform
+  thread, events posted to the isolate, as on iOS).
+  - The same two-item window: ExoPlayer's playlist holds the current item and
+    the cued one, for gapless advance with the screen off; pause at item end,
+    clips, loop one, speed with pitch kept.
+  - AES-CTR decrypted in memory by a Media3 `DataSource` with the iOS engine's
+    counter arithmetic, over files, assets and HTTP byte ranges (206 required,
+    no compression), with the same wrong-key check and error kinds.
+  - Headers on every request, HLS playlists and segments included; two
+    retries for a failed load, none for what retrying cannot fix.
+  - A failure of the cued item that retrying will not fix is reported before
+    it is reached, so it is never advanced into.
+  - The session holds audio focus for the whole app; interruptions, unplugged
+    headphones and output devices are reported as on iOS. A play during a
+    call is refused; before Android 8, ovoz ducks players itself; a queue
+    that has ended is not replayed when an interruption ends.
+  - The media notification and media session: `OvozPlaybackService`, which
+    the app declares, runs as a media-playback foreground service while the
+    player that owns the controls plays. Commands go through Dart, as on iOS.
+  - The network monitor reports a network going away, coming back or moving
+    to another interface.
+- `AudioSessionConfig.androidAudio` (`AndroidAudioConfig`: usage, content
+  type, focus, pause when ducked) and `effectiveAndroidAudio`, which derives it
+  from the presets when not set.
+- Debug builds warn on Android when media controls are enabled but the
+  manifest lacks the playback service.
+- Fixed (iOS): route changes from `wakeFromSleep` on reached Dart as other
+  reasons (`AVAudioSession.RouteChangeReason` skips 5, and its raw value was
+  passed as the index).
+- Fixed (iOS): a queue that had ended was played again from the start of its
+  last item when an interruption ended.
+
 ## 0.1.0-dev.4
 
 - `StallPolicy` handles the network. A dropped connection is a wait, not a

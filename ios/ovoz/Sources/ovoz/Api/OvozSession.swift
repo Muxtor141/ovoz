@@ -7,7 +7,7 @@ public protocol OvozSessionListener: NSObjectProtocol {
   func onInterruption(_ began: Bool, shouldResume: Bool)
   /// Headphones were unplugged: audio is about to come out of the speaker.
   func onBecomingNoisy()
-  /// [reason] is an `AVAudioSession.RouteChangeReason` raw value.
+  /// [reason] is a Dart `AudioRouteChangeReason` index.
   func onRouteChanged(_ reason: Int)
   /// The system's media services restarted; players may need to reload.
   func onMediaServicesReset()

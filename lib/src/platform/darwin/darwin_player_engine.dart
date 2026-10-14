@@ -4,10 +4,10 @@ import 'dart:typed_data';
 // toNSString(), toNSData() and toDartString() conversions.
 import 'package:objective_c/objective_c.dart';
 
-import 'package:ovoz/src/audio_error.dart';
 import 'package:ovoz/src/engine/player_engine.dart';
 import 'package:ovoz/src/media_controls.dart';
 import 'package:ovoz/src/platform/darwin/ovoz_bindings.g.dart';
+import 'package:ovoz/src/platform/native_codec.dart';
 import 'package:ovoz/src/player_state.dart';
 
 /// [PlayerEngine] on the Swift engine (`OvozPlayer`), through ffigen
@@ -17,22 +17,14 @@ final class DarwinPlayerEngine implements PlayerEngine {
   DarwinPlayerEngine() {
     final listener = OvozPlayerListener$Builder.implementAsListener(
       onStateChanged_playing_: (state, playing) =>
-          _emit(EngineStateChanged(ProcessingState.values[state], playing)),
+          _emit(EngineStateChanged(NativeCodec.processingState(state), playing)),
       onItemStarted_: (id) => _emit(EngineItemStarted(id)),
       onItemEnded_: (id) => _emit(EngineItemEnded(id)),
       onDurationChanged_durationMs_: (id, ms) => _emit(EngineDurationChanged(id, Duration(milliseconds: ms))),
-      onError_code_message_: (id, code, message) => _emit(
-        EngineItemFailed(
-          id,
-          AudioError(
-            code >= 0 && code < AudioErrorKind.values.length
-                ? AudioErrorKind.values[code]
-                : AudioErrorKind.unknown,
-            message.toDartString(),
-          ),
-        ),
-      ),
-      onRemoteCommand_value_: (command, value) => _emit(EngineMediaCommand(_commandEvent(command, value))),
+      onError_code_message_: (id, code, message) =>
+          _emit(EngineItemFailed(id, NativeCodec.error(code, message.toDartString()))),
+      onRemoteCommand_value_: (command, value) =>
+          _emit(EngineMediaCommand(NativeCodec.commandEvent(command, value))),
       onNetworkChanged_: (available) => _emit(EngineNetworkChanged(available: available)),
       $keepIsolateAlive: false,
     );
@@ -95,12 +87,12 @@ final class DarwinPlayerEngine implements PlayerEngine {
 
   @override
   void enableMediaControls(MediaControls controls) {
-    var bits = 0;
-    for (final command in controls.commands) {
-      bits |= 1 << command.index;
-    }
     final skip = controls.skipInterval.inMilliseconds;
-    _player.enableMediaControls(bits, skipForwardMs: skip, skipBackwardMs: skip);
+    _player.enableMediaControls(
+      NativeCodec.commandBits(controls.commands),
+      skipForwardMs: skip,
+      skipBackwardMs: skip,
+    );
   }
 
   @override
@@ -128,7 +120,7 @@ final class DarwinPlayerEngine implements PlayerEngine {
   }
 
   @override
-  ProcessingState get processingState => ProcessingState.values[_player.processingState];
+  ProcessingState get processingState => NativeCodec.processingState(_player.processingState);
 
   @override
   bool get playing => _player.isPlaying;
@@ -169,18 +161,5 @@ final class DarwinPlayerEngine implements PlayerEngine {
       if (metadata.duration case final duration?) native.durationHintMs = duration.inMilliseconds;
     }
     return native;
-  }
-
-  static MediaCommandEvent _commandEvent(int raw, double value) {
-    final command = raw >= 0 && raw < MediaCommand.values.length
-        ? MediaCommand.values[raw]
-        : MediaCommand.togglePlayPause;
-    final ms = Duration(milliseconds: value.round());
-    return switch (command) {
-      MediaCommand.seek => MediaCommandEvent(command, position: ms),
-      MediaCommand.skipForward || MediaCommand.skipBackward => MediaCommandEvent(command, interval: ms),
-      MediaCommand.changeSpeed => MediaCommandEvent(command, speed: value),
-      _ => MediaCommandEvent(command),
-    };
   }
 }

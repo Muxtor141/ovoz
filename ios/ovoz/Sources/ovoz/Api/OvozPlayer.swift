@@ -360,9 +360,11 @@ public final class OvozPlayer: NSObject {
   // MARK: Used by the session manager
 
   /// The system paused audio for an interruption. Returns whether this player
-  /// was playing, so it can be resumed when the interruption ends.
+  /// was to be heard, so it can be resumed when the interruption ends. One at
+  /// the end of its queue, failed or empty plays nothing and is left as it
+  /// is: resuming it would replay or reload it.
   func interruptionBegan() -> Bool {
-    guard playWhenReady else { return false }
+    guard playWhenReady, let current, !current.failed, !ended else { return false }
     playWhenReady = false
     syncPlayback()
     emitState()

@@ -539,7 +539,7 @@ SWIFT_PROTOCOL_NAMED("OvozSessionListener")
 - (void)onInterruption:(BOOL)began shouldResume:(BOOL)shouldResume;
 /// Headphones were unplugged: audio is about to come out of the speaker.
 - (void)onBecomingNoisy;
-/// [reason] is an <code>AVAudioSession.RouteChangeReason</code> raw value.
+/// [reason] is a Dart <code>AudioRouteChangeReason</code> index.
 - (void)onRouteChanged:(NSInteger)reason;
 /// The system’s media services restarted; players may need to reload.
 - (void)onMediaServicesReset;
