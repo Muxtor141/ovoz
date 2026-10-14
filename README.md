@@ -35,6 +35,9 @@ API. `ovoz` is a working name.
 
 ## Setup
 
+The full guide, with every platform step and the whole API, is
+[doc/integration.md](doc/integration.md). The short version:
+
 ```yaml
 dependencies:
   ovoz:

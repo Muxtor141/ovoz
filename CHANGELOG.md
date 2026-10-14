@@ -1,5 +1,8 @@
 ## 0.1.0-dev.5
 
+- `doc/integration.md`: the full integration guide, from iOS and Android
+  setup through every part of the API, migration from just_audio and
+  audio_service, and troubleshooting.
 - Android, behind the same API: a Kotlin engine on Media3 1.11 ExoPlayer,
   called from Dart through jnigen bindings (synchronous calls on the platform
   thread, events posted to the isolate, as on iOS).
